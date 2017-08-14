@@ -212,7 +212,9 @@ void Sim1D::setTimeStep(double stepsize, size_t n, const int* tsteps)
 
 int Sim1D::newtonSolve(int loglevel)
 {
-    int m = OneDim::solve(m_x.data(), m_xnew.data(), loglevel);
+    //int m = OneDim::solve(m_x.data(), m_xnew.data(), loglevel);
+    int m = OneDim::solve_Bzz(m_x.data(), m_xnew.data(), loglevel);
+
     if (m >= 0) {
         m_x = m_xnew;
         return 0;

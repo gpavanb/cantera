@@ -291,7 +291,7 @@ else:
 if env['OS'] in ('Windows', 'Darwin'):
     defaults.threadFlags = ''
 else:
-    defaults.threadFlags = '-pthread'
+    defaults.threadFlags = ''
 
 # InstallVersionedLib only fully functional in SCons >= 2.4.0
 # SHLIBVERSION fails with MinGW: http://scons.tigris.org/issues/show_bug.cgi?id=3035
@@ -476,6 +476,12 @@ config_options = [
     PathVariable(
         'blas_lapack_dir',
         """Directory containing the libraries specified by 'blas_lapack_libs'. Not
+           needed if the libraries are installed in a standard location, e.g.
+           ``/usr/lib``.""",
+        '', PathVariable.PathAccept),
+    PathVariable(
+        'bzzmath_libs',
+        """Directory containing the libraries specified by 'bzzmath_libs'. Not
            needed if the libraries are installed in a standard location, e.g.
            ``/usr/lib``.""",
         '', PathVariable.PathAccept),
@@ -767,8 +773,8 @@ int main(int argc, char** argv) {
 conf = Configure(env, custom_tests={'CheckStatement': CheckStatement})
 
 # Set up compiler options before running configuration tests
-env['CXXFLAGS'] = listify(env['cxx_flags'])
 env['CCFLAGS'] = listify(env['cc_flags']) + listify(env['thread_flags'])
+env['CXXFLAGS'] = listify(env['cxx_flags'])
 env['LINKFLAGS'] += listify(env['thread_flags'])
 env['CPPDEFINES'] = {}
 

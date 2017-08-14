@@ -88,8 +88,8 @@ if localenv['blas_lapack_libs']:
 if localenv['system_fmt']:
     localenv.Append(LIBS='fmt')
 
-# link to CGAL library
-#localenv.Append(LIBS=['gmp','CGAL','CGAL_Core'])
+# link to BzzMath library
+localenv.Append(LIBS=['BzzMath7'],LIBPATH=localenv['bzzmath_libs'])
 
 # Build the Cantera shared library
 if localenv['layout'] != 'debian':

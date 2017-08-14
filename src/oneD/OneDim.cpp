@@ -3,15 +3,19 @@
 // This file is part of Cantera. See License.txt in the top-level directory or
 // at http://www.cantera.org/license.txt for license and copyright information.
 
+#define BZZ_COMPILER 101
 #include "cantera/oneD/OneDim.h"
 #include "cantera/numerics/Func1.h"
 #include "cantera/base/ctml.h"
 #include "cantera/oneD/MultiNewton.h"
+#include "cantera/ext/BzzMath/hpp/BzzMath.hpp"
 
 #include <fstream>
+#include <functional>
 #include <ctime>
 
 using namespace std;
+using namespace std::placeholders;
 
 namespace Cantera
 {
@@ -243,6 +247,44 @@ int OneDim::solve(doublereal* x, doublereal* xnew, int loglevel)
     */
 
     return m_newt->solve(x, xnew, *this, *m_jac, loglevel);
+}
+
+static void ResidualFunction(OneDim& tmp, BzzVector& x, BzzVector& f)
+{
+    BzzVector y(tmp.size());
+    tmp.eval(npos, x.GetHandle(), y.GetHandle(), 0.0, 0);
+    f = y;
+}
+
+void testFn(BzzVector& x, BzzVector& f)
+{
+
+}
+
+int OneDim::solve_Bzz(doublereal* x, doublereal* xnew, int loglevel)
+{
+  // Create relevant BzzVectors
+  BzzVector x0(size(),x);
+  //auto fp = bind(testFn, (*this), _1, _2);
+  BzzNonLinearSystem nls(x0,testFn);  
+
+  // Return solver status
+  int m = nls();
+
+  // Store solution in xnew
+  BzzVector x1 = x0;
+  xnew = x1.GetHandle();  
+
+  // Re-map solution status
+  if (m == 7)
+     m = -5;
+  else if (m == 8)
+     m = -6;
+  
+  // So that non-negative implies good status
+  m = m - 2;
+
+  return m;
 }
 
 void OneDim::evalSSJacobian(doublereal* x, doublereal* xnew)

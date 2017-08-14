@@ -10,6 +10,7 @@
 
 #include "Domain1D.h"
 #include "MultiJac.h"
+#include "cantera/ext/BzzMath/hpp/BzzMath.hpp"
 
 namespace Cantera
 {
@@ -47,6 +48,8 @@ public:
      * @param loglevel   Controls amount of diagnostic output.
      */
     int solve(doublereal* x0, doublereal* x1, int loglevel);
+    int solve_Bzz(doublereal* x0, doublereal* x1, int loglevel);
+    typedef void (OneDim::*OneDimMemFnPtr)(BzzVector& x, BzzVector& f);
 
     /// Number of domains.
     size_t nDomains() const {
@@ -367,6 +370,8 @@ private:
     //! successive grid refinement)
     vector_int m_timeSteps;
 };
+
+static void ResidualFunction(OneDim& tmp, BzzVector& x, BzzVector& f);
 
 }
 
