@@ -4,9 +4,12 @@
 // at http://www.cantera.org/license.txt for license and copyright information.
 
 #include "cantera/oneD/StFlow.h"
+#include "cantera/oneD/gc_wrap.h"
 #include "cantera/base/ctml.h"
 #include "cantera/transport/TransportBase.h"
 #include "cantera/numerics/funcs.h"
+
+#include <algorithm> // accumulate, copy_n
 
 using namespace std;
 
@@ -1003,7 +1006,7 @@ XML_Node& FreeFlame::save(XML_Node& o, const doublereal* const sol)
     return flow;
 }
 
-SprayFlame::SprayFlame(IdealGasPhase* ph, size_t nsp, size_t points) :
+SprayFlame::SprayFlame(IdealGasPhase* ph, std::string fuel, std::vector<std::string> palette, size_t nsp, size_t points) :
     AxiStagnFlow(ph, nsp, points)
 {
     m_nv = c_offset_Y+m_nsp+c_offset_nl+1;
@@ -1012,25 +1015,16 @@ SprayFlame::SprayFlame(IdealGasPhase* ph, size_t nsp, size_t points) :
     setBounds(c_offset_Y+m_nsp+c_offset_Ul, -1e20, 1e20); // no bounds on Ul
     setBounds(c_offset_Y+m_nsp+c_offset_vl, -1e20, 1e20); // no bounds on vl
     setBounds(c_offset_Y+m_nsp+c_offset_Tl, 200.0, 5000.0); // bounds on Tl
-    setBounds(c_offset_Y+m_nsp+c_offset_ml, -1e-7, 1e20); // bounds on ml
     setBounds(c_offset_Y+m_nsp+c_offset_nl, -1e-7, 1e20); // positivity for nl
 
     setID("spray flame");
-    // CHANGE HERE 
-    // (default is water)
-    updateFuelSpecies("H2O");
-    // vapor pressure coefficients
-    m_prs_A = 8.07131;
-    m_prs_B = 1730.63;
-    m_prs_C = 233.426-273.15;
-    // liquid density
-    m_rhol_A = 0.14395;
-    m_rhol_B = 0.0112;
-    m_rhol_C = 649.727;
-    m_rhol_D = 0.05107;
-    // heat capacity [J/kmol/K]
-    m_cpl = 76.0e+03;
+
+    initialize_gc(fuel);
+    size_t ns = numSpecies();
+    updateFuelSpecies(palette);
     
+    for (size_t i = 0; i < ns; i++)
+        setBounds(c_offset_Y+m_nsp+c_offset_ml+i, -1e-7, 1e20); // bounds on ml
 }
 
 void SprayFlame::eval(size_t jg, doublereal* xg,
@@ -1066,17 +1060,39 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
             // Continuity. This propagates information right-to-left, since
             // rho_u at point 0 is dependent on rho_u at point 1, but not on
             // mdot from the inlet.
-            rsd[index(c_offset_U,0)] += (nl(x,0)*mdot(x,0) + nl(x,1)*mdot(x,1))/2.0;
+	    std::vector<doublereal> sourceVec_j = source(x,j);
+	    std::vector<doublereal> sourceVec_jp1 = source(x,j+1);
+	    std::vector<doublereal> mdot_j(numFuelSpecies);
+	    std::vector<doublereal> mdot_jp1(numFuelSpecies);
+	    std::copy_n(sourceVec_j.begin(),numFuelSpecies,mdot_j.begin());
+	    std::copy_n(sourceVec_jp1.begin(),numFuelSpecies,mdot_jp1.begin());
+
+	    doublereal sum_mdot_j = std::accumulate(mdot_j.begin(), mdot_j.end(),0.0);
+	    doublereal sum_mdot_jp1 = std::accumulate(mdot_jp1.begin(), mdot_jp1.end(),0.0);
+
+            rsd[index(c_offset_U,0)] += (nl(x,0)*sum_mdot_j + nl(x,1)*sum_mdot_jp1)/2.0;
 
         } else if (j == m_points - 1) {
             continue;
 
         } else { // interior points
+	    // TODO : Modify comments to reflect new equations
 
+	    std::vector<doublereal> sourceVec_j = source(x,j);
+	    std::vector<doublereal> sourceVec_jp1 = source(x,j+1);
+	    std::vector<doublereal> mdot_j(numFuelSpecies);
+	    std::vector<doublereal> mdot_jp1(numFuelSpecies);
+	    std::copy_n(sourceVec_j.begin(),numFuelSpecies,mdot_j.begin());
+	    std::copy_n(sourceVec_jp1.begin(),numFuelSpecies,mdot_jp1.begin());
+	    doublereal q_j = sourceVec_j[numFuelSpecies];
+	    //doublereal q_jp1 = sourceVec_jp1[numFuelSpecies];
+
+	    doublereal sum_mdot_j = std::accumulate(mdot_j.begin(), mdot_j.end(),0.0);
+	    doublereal sum_mdot_jp1 = std::accumulate(mdot_jp1.begin(), mdot_jp1.end(),0.0);
             //------------------------------------------------
-            //    Coninuity equation
+            //    Continuity equation
             //------------------------------------------------
-            rsd[index(c_offset_U,j)] += (nl(x,j)*mdot(x,j) + nl(x,j+1)*mdot(x,j+1))/2.0;
+            rsd[index(c_offset_U,j)] += (nl(x,j)*sum_mdot_j + nl(x,j+1)*sum_mdot_jp1)/2.0;
 
             //------------------------------------------------
             //    Radial momentum equation
@@ -1087,24 +1103,27 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
             //-------------------------------------------------
             // rsd[index(c_offset_V,j)] -= ( nl(x,j) * Fr(x,j) / m_rho[j] );
             rsd[index(c_offset_V,j)] += 
-                (nl(x,j) * mdot(x,j) * (Ul(x,j)-V(x,j)) - nl(x,j) * Fr(x,j)) / m_rho[j];
+                (nl(x,j) * sum_mdot_j * (Ul(x,j)-V(x,j)) - nl(x,j) * Fr(x,j)) / m_rho[j];
 
             //-------------------------------------------------
             //    Species equations
             //
             //   \rho dY_k/dt + \rho u dY_k/dz + dJ_k/dz
             //   = M_k\omega_k
-            //     + (\delta_kf - Y_k) nl mdot
+            //     + (\delta_kf*mdot[i] - Y_k*mdot) nl 
+	    // Refer to Olguin, Gutheil (1) and (10)
             //-------------------------------------------------
             for (size_t k = 0; k < m_nsp; k++) {
-                doublereal delta_kf;
-                if (k == c_offset_fuel) {
-                    delta_kf = 1.0;
-                } else {
-                    delta_kf = 0.0;
+                doublereal delta_kf = 0.0;
+		size_t idx = 0;
+		for (idx = 0; idx < numFuelSpecies; idx++) {
+                    if (k == c_offset_fuel[idx]) { 
+                        delta_kf = 1.0;
+			break;
+		    }
                 }
                 rsd[index(c_offset_Y + k, j)] += 
-                    (delta_kf - Y(x,k,j)) * nl(x,j) * mdot(x,j) / m_rho[j];
+                    (delta_kf * mdot_j[idx] - Y(x,k,j) * sum_mdot_j) * nl(x,j) / m_rho[j];
             }
 
             //-----------------------------------------------
@@ -1117,8 +1136,8 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
             //      + nl mdot cp (Tl - Tg) - nl mdot q
             //-----------------------------------------------
             rsd[index(c_offset_T, j)] += 
-                (nl(x,j) * mdot(x,j) * cpgf(x,j) * (Tl(x,j) - T(x,j)) - 
-                 nl(x,j) * mdot(x,j) * q(x,j)) / (m_rho[j]*m_cp[j]);
+                (nl(x,j) * sum_mdot_j * cpgf(x,j) * (Tl(x,j) - T(x,j)) - 
+                 nl(x,j) * sum_mdot_j * q_j) / (m_rho[j]*m_cp[j]);
 
         }
     }
@@ -1148,16 +1167,34 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
             rsd[index(c_offset_Y+m_nsp+c_offset_vl,0)] = vl(x,0);
             rsd[index(c_offset_Y+m_nsp+c_offset_Ul,0)] = Ul(x,0);
             rsd[index(c_offset_Y+m_nsp+c_offset_Tl,0)] = Tl(x,0);
-            rsd[index(c_offset_Y+m_nsp+c_offset_ml,0)] = ml(x,0);
+            for (size_t i = 0; i < numFuelSpecies; i++) 
+                 rsd[index(c_offset_Y+m_nsp+c_offset_ml+i,0)] = mlk(x,i,0);
 
             diag[index(c_offset_Y+m_nsp+c_offset_Ul, 0)] = 0;
             diag[index(c_offset_Y+m_nsp+c_offset_vl, 0)] = 0;
             diag[index(c_offset_Y+m_nsp+c_offset_Tl, 0)] = 0;
-            diag[index(c_offset_Y+m_nsp+c_offset_ml, 0)] = 0;
+            for (size_t i = 0; i < numFuelSpecies; i++) 
+                 diag[index(c_offset_Y+m_nsp+c_offset_ml+i, 0)] = 0;
 
         } else if (j == m_points - 1) {
             evalRightBoundaryLiquid(x, rsd, diag, rdt);
         } else { // interior points
+
+	    // TODO : Call source term function only once
+	    std::vector<doublereal> sourceVec_j = source(x,j);
+	    std::vector<doublereal> sourceVec_jp1 = source(x,j+1);
+	    std::vector<doublereal> mdot_j(numFuelSpecies);
+	    std::vector<doublereal> mdot_jp1(numFuelSpecies);
+	    std::copy_n(sourceVec_j.begin(),numFuelSpecies,mdot_j.begin());
+	    std::copy_n(sourceVec_jp1.begin(),numFuelSpecies,mdot_jp1.begin());
+	    //doublereal q_j = sourceVec_j[numFuelSpecies];
+	    //doublereal q_jp1 = sourceVec_jp1[numFuelSpecies];
+
+	    doublereal sum_mdot_j = std::accumulate(mdot_j.begin(), mdot_j.end(),0.0);
+	    //doublereal sum_mdot_jp1 = std::accumulate(mdot_jp1.begin(), mdot_jp1.end(),0.0);
+
+	    doublereal evap_term_j = sourceVec_j[numFuelSpecies + 1];
+            doublereal cl_d_j = sourceVec_j[numFuelSpecies + 2];
 
             //------------------------------------------------
             //    Number density equation
@@ -1167,11 +1204,13 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
             //------------------------------------------------
             //    Mass equation
             //
-            //    dm_l/dt + v_l dm_l/dz = -mdot
+            //    dm_l,i/dt + v_l dm_l,i/dz = -mdot_i
             //-------------------------------------------------
-            rsd[index(c_offset_Y+m_nsp+c_offset_ml,j)] = -vl(x,j) * dmldz(x,j) - 
-                rdt * (ml(x,j) - ml_prev(j)) - mdot(x,j) + av_ml(x,j);
-            diag[index(c_offset_Y+m_nsp+c_offset_ml, j)] = 1;
+            for (size_t i = 0; i < numFuelSpecies; i++) {
+                 rsd[index(c_offset_Y+m_nsp+c_offset_ml+i,j)] = -vl(x,j) * dmlkdz(x,i,j) - 
+                      rdt * (mlk(x,i,j) - mlk_prev(i,j)) - mdot_j[i] + av_mlk(x,i,j);
+                 diag[index(c_offset_Y+m_nsp+c_offset_ml+i, j)] = 1;
+	    }
 
             //------------------------------------------------
             //    Radial momentum equation
@@ -1208,7 +1247,7 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
                     rdt * (Tl(x,j) - Tl_prev(j)) + av_Tl(x,j);
             if (ml(x,j)>sqrt(numeric_limits<double>::min())) {
                 rsd[index(c_offset_Y+m_nsp+c_offset_Tl,j)] += 
-                    mdot(x,j)*(q(x,j)-Lv()) / ml(x,j) / cpl(x,j);
+                    sum_mdot_j*(evap_term_j) / ml(x,j) / cl_d_j;
             }
             diag[index(c_offset_Y+m_nsp+c_offset_Tl, j)] = 1;
 
@@ -1240,6 +1279,251 @@ void SprayFlame::evalNumberDensity(size_t j, doublereal* x, doublereal* rsd,
      diag[index(c_offset_Y+m_nsp+c_offset_nl, j)] = 1;
 }
 
+
+std::vector<double> SprayFlame::source(const doublereal* x, size_t j) const {
+
+    // Reset boiling flag
+    bool isBoiling = false;
+
+    // Get ambient fractions of each liquid component
+    std::vector<doublereal> Yspec(numFuelSpecies);
+    for (size_t i = 0; i < numFuelSpecies; i++)
+	 Yspec[i] = Y(x,c_offset_fuel[i],j);		
+
+    // Get mass fractions of each liquid component
+    std::vector<doublereal> Ycomp_l(numFuelSpecies);
+    for (auto& f : Ycomp_l) f = mlk(x,&f-&Ycomp_l[0],j);
+
+    // Get mixture molecular weight
+    doublereal MWmix = 0.0;
+    std::vector<doublereal> MWVec(numFuelSpecies);
+    MW(MWVec.data());
+
+    // Get mole fraction
+    std::vector<doublereal> Xcomp_l(numFuelSpecies);
+    for (size_t i = 0; i < numFuelSpecies; i++)
+	 Xcomp_l[i] = MWmix*Ycomp_l[i]/MWVec[i];
+
+    // Saturation pressure
+    std::vector<doublereal> Psat_comp(numFuelSpecies);
+    doublereal temp = T(x,j);
+    PSat(Psat_comp.data(),&temp);
+
+    // Raoult's law
+    std::vector<doublereal> Xsat_comp(numFuelSpecies);
+    if (evapModel == "distillation") {
+	 for (size_t i = 0; i < numFuelSpecies; i++)
+	      Xsat_comp[i] = Xcomp_l[i]*Psat_comp[i]/m_press;
+    }
+    else if (evapModel == "diffusion") {
+	 for (size_t i = 0; i < numFuelSpecies; i++)
+	      Xsat_comp[i] = std::min(Xcomp_l[i], Xcomp_l[i]*Psat_comp[i]/m_press);
+    }
+
+    // Check if in boiling regime
+    doublereal sum_Xsat_comp = std::accumulate(Xsat_comp.begin(), Xsat_comp.end(), 0.0);
+    if (sum_Xsat_comp >= 1.0) {
+	 isBoiling = true;
+	 for (size_t i = 0; i < numFuelSpecies; i++)
+	      Xsat_comp[i] = Xsat_comp[i]/sum_Xsat_comp;
+    }     
+    
+    // Air composition
+    doublereal X_air = 1.0 - sum_Xsat_comp;
+
+    // Mass fraction at droplet surface
+    std::vector<doublereal> Ysat_comp(numFuelSpecies);
+    doublereal MWsat_comp = std::inner_product(Xsat_comp.begin(),Xsat_comp.end(),MWVec.begin(),0.0) + X_air*m_wtm[j]; 
+    for (size_t i = 0; i < numFuelSpecies; i++)
+	 Ysat_comp[i] = Xsat_comp[i]*MWVec[i]/MWsat_comp;
+    //doublereal Y_air = X_air * m_wtm[j] / MWsat_comp;
+
+    // Average specific heat capacity
+    std::vector<doublereal> c_lVec(numFuelSpecies);
+    c_l(c_lVec.data(),&temp);
+    doublereal cl_d = std::inner_product(Xcomp_l.begin(),Xcomp_l.end(),c_lVec.begin(),0.0);
+    
+    // 1/3rd rule
+    double Tref = (2.0/3.0)*Tl(x,j) + (1.0/3.0)*temp;
+
+    // Reference fractions
+    std::vector<doublereal> Yref_comp(numFuelSpecies);
+    // Air fraction in ambient
+    doublereal Yref_remain = 0.0;
+
+    // Evaluate reference mass fraction
+    for (size_t i = 0; i < numFuelSpecies; i++) {
+	Yref_comp[i] = (2.0/3.0)*Ysat_comp[i] + (1.0/3.0)*Yspec[i];
+	Yref_remain += Yspec[i];      
+    }
+    //doublereal Yref_air = (2.0/3.0)*Y_air + (1.0/3.0)*(1.0 - Yref_remain);
+
+    // Evaluate reference mole fraction
+    doublereal MW_ref = 0.0;
+    std::vector<doublereal> Xref_comp(numFuelSpecies);
+    for (size_t i = 0; i < numFuelSpecies; i++)
+	 MW_ref += Yref_comp[i]/MWVec[i];
+    MW_ref = 1.0/MW_ref;
+    for (size_t i = 0; i < numFuelSpecies; i++)
+	 Xref_comp[i] = Yref_comp[i]*MW_ref/MWVec[i];
+
+    // Evaluate reference density	
+    doublereal rho_ref = m_press*MW_ref/(R_u * Tref);
+	    
+    // Evaluate mixture viscosity, specific heat, thermal conductivity
+    // NOTE : Using Cantera mixing rules
+    doublereal mu_ref = m_visc[j];
+    doublereal cp_ref = m_cp[j];
+    doublereal lambda_ref = m_tcon[j];
+
+    // Get diffusion coefficients
+    std::vector<double> D_ref(numFuelSpecies);
+    double curr_pressure = m_press;
+    D(D_ref.data(),&curr_pressure,&Tref);
+
+    // Non-dimensional numbers
+    doublereal relative_velocity = sqrt(pow(Ul(x,j) - u(x,j),2.0) + pow(vl(x,j) - V(x,j),2.0));
+    doublereal Red_sl = dl(x,j)*m_rho[j]*relative_velocity/m_visc[j];
+    doublereal tau_d = rhol(x,j)*pow(dl(x,j),2.0)/(18.0*m_visc[j]);
+
+    doublereal Pr_ref_g = cp_ref*mu_ref/lambda_ref;
+    std::vector<double> Sc_ref_g(numFuelSpecies);
+    for (size_t i = 0; i < numFuelSpecies; i++)
+	 Sc_ref_g[i]  = mu_ref/(rho_ref*D_ref[i]);
+
+    // Mixture-averaged Schmidt
+    doublereal D_ref_bar = 0.0;
+    for (size_t i = 0; i < numFuelSpecies; i++)
+	D_ref_bar += Xref_comp[i]/D_ref[i];
+    D_ref_bar = D_ref_bar/std::accumulate(Xref_comp.begin(),Xref_comp.end(),0.0);
+    D_ref_bar = 1.0/D_ref_bar;
+    doublereal Sc_ref_g_avg = mu_ref/(rho_ref*D_ref_bar);
+
+    // Sherwood and Nusselt numbers
+    doublereal Nu_ref_g = 2.0 + 0.552 * pow(Red_sl,0.5)*pow(Pr_ref_g,1.0/3.0);
+    std::vector<double> Sh_ref_g(numFuelSpecies);
+    for (size_t i = 0; i < numFuelSpecies; i++)	
+	 Sh_ref_g[i] = 2.0 + 0.552 * pow(Red_sl,0.5)*pow(Sc_ref_g[i],1.0/3.0);
+
+    // Mixture-averaged Sherwood
+    doublereal Sh_ref_g_avg = 2.0 + 0.552 * pow(Red_sl,0.5)*pow(Sc_ref_g_avg,1.0/3.0);
+    
+    // Mass Spalding number
+    doublereal sum_Yfuels_gas = std::accumulate(Yspec.begin(),Yspec.end(),0.0);
+    std::vector<double> eta_k(numFuelSpecies);
+    for (size_t i = 0; i < numFuelSpecies; i++)
+	eta_k[i] = ( D_ref_bar * Sh_ref_g_avg ) / ( D_ref[i] * Sh_ref_g[i] );
+
+    // Calculate mass split
+    std::vector<double> eps_k(numFuelSpecies);
+    std::vector<double> Bm_k(numFuelSpecies);
+    doublereal Bm = 0.0;
+    if (isBoiling == true) {
+	if (evapModel == "distillation") {
+	// BMi goes to infinity when droplet boils. Selective suppression effects absent
+	// This is enforced unfortunately, but for a very short period - not much effect on total ignition
+	     eps_k = Ysat_comp;
+	}
+	else if (evapModel == "diffusion") 
+	     eps_k = Ycomp_l;
+    }
+
+    else {
+	 doublereal sum_Ysat_comp = std::accumulate(Ysat_comp.begin(), Ysat_comp.end(), 0.0);
+	 Bm = ( sum_Ysat_comp - sum_Yfuels_gas ) / ( 1.0 - sum_Ysat_comp);
+
+	 // Handle the saturated ambient case
+	 // <= -1.0 used to account for roundoff
+	 if (Bm <= -1.0)
+	      std::fill(Bm_k.begin(),Bm_k.end(),-1.0);
+	 else {
+	     for (size_t i = 0; i < numFuelSpecies; i++)
+		  Bm_k[i] = pow(1.0 + Bm,eta_k[i]) - 1.0;
+	 }
+    }
+
+    // Calculate BM_k based on individual Spalding numbers for the distillation model
+    if (evapModel == "distillation") {
+	 for (size_t i = 0; i < numFuelSpecies; i++)
+	      eps_k[i] = Ysat_comp[i] + ( Ysat_comp[i] - Yspec[i] ) / Bm_k[i];
+    }
+    // For the diffusion model, you only get the entire source term from the Spalding numbers
+    // The split is however decided only based on the liquid composition
+    else if (evapModel == "diffusion") 
+	 eps_k = Ycomp_l;
+
+    // Normalize eps_k to 1 because sum must equal mdot
+    // Correction not applied when eps_k is negative because
+    // that corresponds to condensation on droplets.
+    // Whether the correlation holds then is an open question
+    if (std::all_of(eps_k.begin(),eps_k.end(),[](double i) {return i > 0.0;})) {
+      doublereal sum_eps_k = std::accumulate(eps_k.begin(),eps_k.end(),0.0);
+      for (auto& f : eps_k) 
+	   f /= sum_eps_k;
+    }
+
+    // Source term is mass(# species) + temperature + (non latent droplet term) + (droplet specific heat)
+    // Last two quantities required for liquid phase equation
+    std::vector<double> sourceTerm(numFuelSpecies + 3, 0.0);
+    std::vector<double>::iterator mdotEnd = (sourceTerm.end() - 1);
+
+    // Compute mass source term
+    std::vector<double> LvVec(numFuelSpecies);
+    Hv(LvVec.data(),&temp);
+
+    if (isBoiling == true) {
+	doublereal latentTerm = std::inner_product(LvVec.begin(),LvVec.end(),eps_k.begin(),0.0);
+	// This term is obtained by forcing dTdt is zero
+	for (size_t i = 0; i < numFuelSpecies; i++)
+	     sourceTerm[i] = ml(x,j) * cp_ref * Nu_ref_g * (1.0/tau_d) * (Tl(x,j) - T(x,j)) * eps_k[i]/(3.0 * Pr_ref_g * latentTerm);
+    }
+    else {
+	 if (Bm > 1.0) {
+	     for (size_t i = 0; i < numFuelSpecies; i++)
+		  sourceTerm[i] = - Sh_ref_g_avg * ml(x,j) /( 3.0 * Sc_ref_g_avg * tau_d) * log(1.0 + Bm) * eps_k[i];
+	 }
+    }
+    
+    // Compute correction coefficient for temperature source term
+    doublereal beta = 0.0;
+    if ( ml(x,j) > 0.0  && dl(x,j) <= 0.0 )
+	 beta = -1.5 * Pr_ref_g * std::accumulate(sourceTerm.begin(),mdotEnd,0.0) / (ml(x,j) / tau_d);
+    doublereal f2 = 0.0;
+    if ( beta != 0.0 ) f2 = beta / ( exp(beta) - 1.0 );
+
+    // Latent heat of vaporization
+    doublereal Evap_latent_heat = std::inner_product(sourceTerm.begin(),mdotEnd,LvVec.begin(),0.0);
+
+    // Temperature source term
+    // Multiplied by md*cl_d as compared to Knudsen, Pitsch
+    if (isBoiling == true) { 
+	 sourceTerm[numFuelSpecies] = 0.0;
+	 sourceTerm[numFuelSpecies + 1] = 0.0;
+    }
+    else {
+	 sourceTerm[numFuelSpecies] = ml(x,j) * Nu_ref_g * cp_ref * f2 * ( temp - Tl(x,j) ) / ( 3.0 * Pr_ref_g * tau_d ) 
+				      + Evap_latent_heat;
+	 sourceTerm[numFuelSpecies + 1] = sourceTerm[numFuelSpecies] - Evap_latent_heat; 	
+    }
+    
+    // Set specific heat capacity
+    sourceTerm[numFuelSpecies + 2] = cl_d;
+
+    return sourceTerm;
+}
+
+
+doublereal SprayFlame::rhol(const doublereal* x, size_t j) const {
+    // Calculate average density
+    std::vector<doublereal> rhoL(numFuelSpecies);
+    doublereal temp = T(x,j);
+    rho_l(rhoL.data(),&temp);
+    doublereal ret = 0.0;
+    for (size_t i = 0; i < numFuelSpecies; i++)
+       ret += mlk(x,i,j)/rhoL[i];
+    return ml(x,j)/ret; 
+}
+
 void SprayFlame::evalRightBoundaryLiquid(doublereal* x, doublereal* rsd,
                                          integer* diag, doublereal rdt)
 {
@@ -1256,11 +1540,13 @@ void SprayFlame::evalRightBoundaryLiquid(doublereal* x, doublereal* rsd,
     rsd[index(c_offset_Y+m_nsp+c_offset_Ul,j)] = Ul(x,j) - Ul(x,j-1);
     rsd[index(c_offset_Y+m_nsp+c_offset_vl,j)] = vl(x,j) - vl(x,j-1);
     rsd[index(c_offset_Y+m_nsp+c_offset_Tl,j)] = Tl(x,j) - Tl(x,j-1);
-    rsd[index(c_offset_Y+m_nsp+c_offset_ml,j)] = ml(x,j) - ml(x,j-1);
+    for (size_t i = 0; i < numFuelSpecies; i++)
+         rsd[index(c_offset_Y+m_nsp+c_offset_ml+i,j)] = mlk(x,i,j) - mlk(x,i,j-1);
     diag[index(c_offset_Y+m_nsp+c_offset_Ul, j)] = 0;
     diag[index(c_offset_Y+m_nsp+c_offset_vl, j)] = 0;
     diag[index(c_offset_Y+m_nsp+c_offset_Tl, j)] = 0;
-    diag[index(c_offset_Y+m_nsp+c_offset_ml, j)] = 0;
+    for (size_t i = 0; i < numFuelSpecies; i++)
+         diag[index(c_offset_Y+m_nsp+c_offset_ml+i, j)] = 0;
 }
 
 string SprayFlame::componentName(size_t n) const
@@ -1277,22 +1563,20 @@ string SprayFlame::componentName(size_t n) const
     default:
         if (n >= c_offset_Y && n < (c_offset_Y + m_nsp)) {
             return m_thermo->speciesName(n - c_offset_Y);
-        } else if (n >= (c_offset_Y + m_nsp) && n <= (c_offset_Y + m_nsp + c_offset_nl)) {
-            switch (n - c_offset_Y - m_nsp) {
-                case 0:
-                    return "Ul";
-                case 1:
-                    return "vl";
-                case 2:
-                    return "Tl";
-                case 3:
-                    return "ml";
-                case 4:
-                    return "nl";
-            }
-        } else {
+        } else if (n >= (c_offset_Y + m_nsp) && n < (c_offset_Y + m_nsp + c_offset_ml + numFuelSpecies)) {
+            size_t idx = n - c_offset_Y - m_nsp;
+	    if (idx == 0)
+	        return "Ul";
+	    else if (idx == 1)
+		return "vl";
+	    else if (idx == 2) 
+                return "Tl";
+	    else if (idx == 3) 
+                return "nl";
+	    else
+                return "ml_" + m_palette[n - c_offset_ml];
+        } else 
             return "<unknown>";
-        }
     }
 }
 
@@ -1343,11 +1627,13 @@ XML_Node& SprayFlame::save(XML_Node& o, const doublereal* const sol)
     soln.getRow(componentIndex("Tl"), x.data());
     addFloatArray(gv,"Tl",x.size(),x.data(),"K","liq. temperature");
 
-    soln.getRow(componentIndex("ml"), x.data());
-    addFloatArray(gv,"ml",x.size(),x.data(),"kg","droplet mass");
-
     soln.getRow(componentIndex("nl"), x.data());
     addFloatArray(gv,"nl",x.size(),x.data(),"/m^3","number density");
+
+    for (size_t i = 0; i < numFuelSpecies; i++) {
+        soln.getRow(componentIndex("ml") + i, x.data());
+        addFloatArray(gv,"ml",x.size(),x.data(),"kg","droplet mass");
+    }
 
     return flow;
 }

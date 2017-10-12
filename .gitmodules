@@ -10,3 +10,7 @@
 [submodule "ext/eigen"]
 	path = ext/eigen
 	url = https://github.com/Cantera/eigen-mirror.git
+[submodule "ext/gc"]
+	path = ext/gc
+	url = https://gpavanb@bitbucket.org/gpavanb/groupcontribution_fortran.git
+	branch = CWrap

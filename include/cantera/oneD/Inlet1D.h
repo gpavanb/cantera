@@ -15,6 +15,8 @@
 #include "cantera/kinetics/InterfaceKinetics.h"
 #include "StFlow.h"
 
+#include <vector>
+
 namespace Cantera
 {
 
@@ -328,8 +330,8 @@ public:
         m_nl0 = nl;
     }
 
-    void setDropletMass(const doublereal ml) {
-        m_ml0 = ml;
+    void setDropletMass(std::vector<doublereal> mlk) {
+         m_mlk0 = mlk;
     }
 
     void setDropletInjectionVel(const doublereal vl) {
@@ -356,10 +358,11 @@ protected:
     doublereal m_vl0;
     doublereal m_Ul0;
     doublereal m_Tl0;
-    doublereal m_ml0;
+    doublereal m_numFuelSpecies;
+
+    std::vector<doublereal> m_mlk0;
 
     SprayFlame* m_spFlow;
-
 };
 
 /**
@@ -381,6 +384,7 @@ public:
 
 protected:
 
+    doublereal m_numFuelSpecies;
     SprayFlame* m_spFlow;
 
 };

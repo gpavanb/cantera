@@ -2,7 +2,7 @@
 #if CT_USE_SYSTEM_EIGEN
 #include <Eigen/Dense>
 #else
-#include "cantera/ext/Eigen/Dense"
+#include "ext/Eigen/Dense"
 #endif
 
 namespace Cantera {

@@ -3,14 +3,20 @@
 // This file is part of Cantera. See License.txt in the top-level directory or
 // at http://www.cantera.org/license.txt for license and copyright information.
 
-#ifndef CT_STFLOW_H
-#define CT_STFLOW_H
+#ifndef ct_stflow_h
+#define ct_stflow_h
 
 #include "Domain1D.h"
 #include "cantera/base/Array.h"
 #include "cantera/thermo/IdealGasPhase.h"
 #include "cantera/kinetics/Kinetics.h"
 #include "cantera/base/ct_defs.h"
+
+#include <algorithm> // fill,min
+#include <cmath> // exp,log, sqrt, pow
+#include <numeric> // Quick sum
+#include <string> // Spray flame prototype
+
 
 namespace Cantera
 {
@@ -30,8 +36,8 @@ const size_t c_offset_Y = 4; // mass fractions
 const size_t c_offset_Ul = 0; // liquid radial velocity 
 const size_t c_offset_vl = 1; // liquid axial velocity
 const size_t c_offset_Tl = 2; // liquid temperature
-const size_t c_offset_ml = 3; // droplet mass
-const size_t c_offset_nl = 4; // number density
+const size_t c_offset_nl = 3; // number density
+const size_t c_offset_ml = 4; // droplet species masses
 const doublereal mmHg2Pa = 133.322365;
 const doublereal bar2Pa  = 1.0e+05;
 
@@ -498,7 +504,7 @@ friend class SprayInlet1D;
 friend class SprayOutlet1D;
 
 public:
-    SprayFlame(IdealGasPhase* ph = 0, size_t nsp = 1, size_t points = 1);
+    SprayFlame(IdealGasPhase* ph = 0, std::string fuel = "", std::vector<std::string> palette = {""}, size_t nsp = 1, size_t points = 1);
 
     virtual void eval(size_t j, doublereal* x, doublereal* r,
                       integer* mask, doublereal rdt);
@@ -519,43 +525,15 @@ public:
         return "Axisymmetric Spray Stagnation";
     }
 
-    void setLiquidDensityParam(const doublereal A_,
-                               const doublereal B_ = 0.0,
-                               const doublereal C_ = 0.0,
-                               const doublereal D_ = 0.0) {
-        // If only A_ is provided, rhol = A_ and it is const. wrt Tl.
-        m_rhol_A = A_;
-        m_rhol_B = B_;
-        m_rhol_C = C_;
-        m_rhol_D = D_;
+    void updateFuelSpecies(const std::vector<std::string> palette) {
+        for (size_t i = 0; i < palette.size(); i++)
+          c_offset_fuel[i] = componentIndex(palette[i]) - c_offset_Y;
+        numFuelSpecies = palette.size();
+	m_palette = palette;
     }
 
-    void setLiquidVapPressParam(const doublereal A_,
-                                const doublereal B_,
-                                const doublereal C_,
-                                const doublereal Tb_,
-                                const std::string unit_ = "mmHg") {
-        if (unit_.compare("mmHg")==0) {
-            m_prs_A = A_;
-            m_prs_B = B_;
-            m_prs_C = C_-273.15;
-            m_Tb = Tb_;
-            m_cvt = mmHg2Pa;
-        } else if (unit_.compare("bar")==0) {
-            m_prs_A = A_;
-            m_prs_B = B_;
-            m_prs_C = C_;
-            m_Tb = Tb_;
-            m_cvt = bar2Pa;
-        }
-    }
-
-    void setLiquidCp(const doublereal cpl_) {
-        m_cpl = cpl_;
-    }
-
-    void updateFuelSpecies(const std::string fuel_name) {
-        c_offset_fuel = componentIndex(fuel_name)-c_offset_Y;
+    size_t getNumFuelSpecies() {
+         return numFuelSpecies;
     }
 
 protected:
@@ -587,11 +565,26 @@ protected:
     }
 
     doublereal ml(const doublereal* x, size_t j) const {
-        return x[index(c_offset_Y+m_nsp+c_offset_ml,j)];
+        doublereal ret = 0.0;
+        for (size_t i = 0; i < numFuelSpecies; i++)
+             ret += x[index(c_offset_Y+m_nsp+c_offset_ml+i,j)];
+        return ret;
+    }
+
+    doublereal mlk(const doublereal* x, size_t k, size_t j) const {
+        if (k >= numFuelSpecies) return 0.0;
+        return x[index(c_offset_Y+m_nsp+c_offset_ml+k,j)];
     }
 
     doublereal ml_prev(size_t j) const {
-        return prevSoln(c_offset_Y+m_nsp+c_offset_ml, j);
+        doublereal ret = 0.0;
+        for (size_t i = 0; i < numFuelSpecies; i++)
+             ret += prevSoln(c_offset_Y+m_nsp+c_offset_ml+i,j);
+        return ret;
+    }
+
+    doublereal mlk_prev(size_t i, size_t j) const {
+         return prevSoln(c_offset_Y+m_nsp+c_offset_ml+i,j); 
     }
 
     doublereal nl(const doublereal* x, size_t j) const {
@@ -603,16 +596,7 @@ protected:
         return prevSoln(c_offset_Y+m_nsp+c_offset_nl, j);
     }
 
-    doublereal rhol(const doublereal* x, size_t j) const {
-        // DIPPR 105
-        if (std::abs(m_rhol_B-0.0)<std::sqrt(std::numeric_limits<double>::min()) && 
-            std::abs(m_rhol_C-0.0)<std::sqrt(std::numeric_limits<double>::min()) &&
-            std::abs(m_rhol_D-0.0)<std::sqrt(std::numeric_limits<double>::min()) ) {
-            return m_rhol_A;
-        } else {
-            return m_rhol_A/(std::pow(m_rhol_B,1.0+std::pow(1.0-Tl(x,j)/m_rhol_C,m_rhol_D)));
-        }
-    }
+    doublereal rhol(const doublereal* x, size_t j) const;
 
     doublereal ml_vl(const doublereal* x, size_t j) const {
         return ml(x,j)*vl(x,j);
@@ -637,22 +621,7 @@ protected:
         return std::pow(6.0*ml(x,j)/Pi/rhol(x,j),1.0/3.0);
     }
 
-    doublereal Dgf(size_t j) {
-        return m_diff[c_offset_fuel+j*m_nsp];
-    }
-
-    doublereal prs(const doublereal* x, size_t j) {
-        // Antoine Equation
-        // (Elliott, Lira, Introductory Chemical Engineering Thermodynamics, 2012)
-        // return std::pow(10.0,m_prs_A-m_prs_B/(m_prs_C+Tl(x,j))) * mmHg2Pa;
-        return std::pow(10.0,m_prs_A-m_prs_B/(m_prs_C+m_Tb)) * m_cvt;
-    }
-
-    doublereal Lv() {
-        // Clausius-Clapeyron equation
-        return m_prs_B*GasConstant/m_wt[c_offset_fuel];
-    }
-
+    // TODO : Set this for multicomponent
     doublereal cpl(const doublereal* x, size_t j) {
         // assume constant for now
         return m_cpl;
@@ -665,31 +634,8 @@ protected:
         // return Yr*GasConstant*cp_R[c_offset_fuel] + (1.0-Yr)*m_cp[j];
         return m_cp[j];
     }
-
-    doublereal Yrs(const doublereal* x, size_t j) {
-        doublereal Xrs = prs(x,j)/m_press;
-        doublereal Yrs = m_wt[c_offset_fuel]*Xrs / 
-                        (m_wt[c_offset_fuel]*Xrs + 
-                         (1.0 - Xrs)*m_wtm[j]);
-        return Yrs;
-    }
-
-    doublereal mdot(const doublereal* x, size_t j) {
-        doublereal Yrs_ = Yrs(x,j);
-        doublereal Bm = (Yrs_-Y(x,c_offset_fuel,j)) / 
-            std::max(1.0-Yrs_,std::sqrt(std::numeric_limits<double>::min()));
-        doublereal mdot_ = 2.0*Pi*dl(x,j)*m_rho[j]*Dgf(j)*std::log(1.0+Bm);
-        return mdot_;
-    }
-
-    doublereal q(const doublereal* x,size_t j) {
-        if (mdot(x,j)<=std::sqrt(std::numeric_limits<double>::min())) {
-            return 0.0;
-        } else {
-            doublereal BT = std::exp(mdot(x,j)/(2.0*Pi*m_rho[j]*Dgf(j)*dl(x,j)))-1.0;
-            return cpgf(x,j)*(T(x,j)-Tl(x,j))/BT;
-        }
-    }
+    
+    std::vector<double> source(const doublereal* x, size_t j) const;
 
     doublereal Fr(const doublereal* x, size_t j) {
         return 3.0*Pi*dl(x,j)*m_visc[j]*(V(x,j)-Ul(x,j));
@@ -714,9 +660,10 @@ protected:
         return (vl(x,jloc) - vl(x,jloc-1))/m_dz[jloc-1];
     }
 
-    doublereal dmldz(const doublereal* x, size_t j) const {
+    doublereal dmlkdz(const doublereal* x, size_t k, size_t j) const {
         size_t jloc = (vl(x,j) > 0.0 ? j : j + 1);
-        return (ml(x,jloc) - ml(x,jloc-1))/m_dz[jloc-1];
+ 	if (k >= numFuelSpecies) return 0.0;	
+        return (mlk(x,k,jloc) - mlk(x,k,jloc-1))/m_dz[jloc-1];
     }
 
     doublereal dnldz(const doublereal* x, size_t j) const {
@@ -732,10 +679,10 @@ protected:
 
     //! @name artifitial viscosities
     //! @{
-    doublereal av_ml(const doublereal* x, size_t j) const {
+    doublereal av_mlk(const doublereal* x, size_t k, size_t j) const {
         doublereal m_visc_ml = 5.0e-0; // ml(x,j)/dl(x,j);
-        doublereal c1 = m_visc_ml*(ml(x,j) - ml(x,j-1));
-        doublereal c2 = m_visc_ml*(ml(x,j+1) - ml(x,j));
+        doublereal c1 = m_visc_ml*(mlk(x,k,j) - mlk(x,k,j-1));
+        doublereal c2 = m_visc_ml*(mlk(x,k,j+1) - mlk(x,k,j));
         return 2.0*(c2/(z(j+1) - z(j)) - c1/(z(j) - z(j-1)))/(z(j+1) - z(j-1));
     }
 
@@ -769,15 +716,18 @@ protected:
     //! @}
 
     // fuel species index
-    size_t c_offset_fuel;
-    // vaper pressure parameters (Antoine)
-    // http://ddbonline.ddbst.com/AntoineCalculation/AntoineCalculationCGI.exe
-    doublereal m_prs_A, m_prs_B, m_prs_C, m_Tb, m_cvt;
-    // liquid density parameters (DIPPR 105)
-    // http://ddbonline.ddbst.de/DIPPR105DensityCalculation/DIPPR105CalculationCGI.exe
-    doublereal m_rhol_A, m_rhol_B, m_rhol_C, m_rhol_D;
+    std::vector<size_t> c_offset_fuel;
+    size_t numFuelSpecies;
+    std::vector<std::string> m_palette;
+
+    // Evaporation model
+    std::string evapModel;
+
     // Liquid heat capacity
     doublereal m_cpl;
+
+    // Ideal gas constant
+    doublereal R_u = 8.314; // J/mol/K
 
 };
 

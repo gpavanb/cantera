@@ -8,6 +8,8 @@
 #include "cantera/base/ctml.h"
 #include "cantera/oneD/StFlow.h"
 
+#include <string>
+
 using namespace std;
 
 namespace Cantera
@@ -745,7 +747,7 @@ void ReactingSurf1D::showSolution(const double* x)
 // -------- SprayInlet1D --------
 //
 SprayInlet1D::SprayInlet1D() :
-    Inlet1D(), m_nl0(0), m_vl0(0), m_Ul0(0), m_Tl0(300.0), m_ml0(0)
+    Inlet1D(), m_nl0(0), m_vl0(0), m_Ul0(0), m_Tl0(300.0)
 {}
 
 void SprayInlet1D::init()
@@ -753,6 +755,7 @@ void SprayInlet1D::init()
     Inlet1D::init();
     m_nsp = m_nsp - c_offset_nl - 1;
     m_spFlow = (SprayFlame*)m_flow;
+    m_numFuelSpecies = m_spFlow->getNumFuelSpecies();
 }
 
 void SprayInlet1D::eval(size_t jg, doublereal* xg, doublereal* rg,
@@ -788,7 +791,8 @@ void SprayInlet1D::eval(size_t jg, doublereal* xg, doublereal* rg,
     // the local temperature to hold the flow T to the inlet T.
     rb[c_offset_Y+nSpecies()+c_offset_Tl] -= m_Tl0;
 
-    rb[c_offset_Y+nSpecies()+c_offset_ml] -= m_ml0;
+    for (size_t i = 0; i < m_numFuelSpecies; i++)
+         rb[c_offset_Y+nSpecies()+c_offset_ml] -= m_mlk0[i];
 
 }
 
@@ -802,19 +806,22 @@ XML_Node& SprayInlet1D::save(XML_Node& o, const doublereal* const soln)
     addFloat(gv, "Ul", sol[c_offset_Ul]);
     addFloat(gv, "vl", sol[c_offset_vl]);
     addFloat(gv, "Tl", sol[c_offset_Tl]);
-    addFloat(gv, "ml", sol[c_offset_ml]);
+
+    for (size_t i = 0; i < m_numFuelSpecies; i++) 
+         addFloat(gv, "ml_"+ std::to_string(i), sol[c_offset_ml+i]);
     addFloat(gv, "nl", sol[c_offset_nl]);
 
-    addFloat(gv, "Dgf", m_spFlow->Dgf(0));
-    addFloat(gv, "prs", m_spFlow->prs(soln,0));
-    addFloat(gv, "Lv", m_spFlow->Lv());
-    addFloat(gv, "cpl", m_spFlow->cpl(soln,0));
-    addFloat(gv, "cpgf", m_spFlow->cpgf(soln,0));
-    addFloat(gv, "Yrs", m_spFlow->Yrs(soln,0));
-    addFloat(gv, "mdot", m_spFlow->mdot(soln,0));
-    addFloat(gv, "q", m_spFlow->q(soln,0));
-    addFloat(gv, "Fr", m_spFlow->Fr(soln,0));
-    addFloat(gv, "fz", m_spFlow->fz(soln,0));
+    // TODO : Modify for multicomponent. Commented for time being
+    //addFloat(gv, "Dgf", m_spFlow->Dgf(0));
+    //addFloat(gv, "prs", m_spFlow->prs(soln,0));
+    //addFloat(gv, "Lv", m_spFlow->Lv());
+    //addFloat(gv, "cpl", m_spFlow->cpl(soln,0));
+    //addFloat(gv, "cpgf", m_spFlow->cpgf(soln,0));
+    //addFloat(gv, "Yrs", m_spFlow->Yrs(soln,0));
+    //addFloat(gv, "mdot", m_spFlow->mdot(soln,0));
+    //addFloat(gv, "q", m_spFlow->q(soln,0));
+    //addFloat(gv, "Fr", m_spFlow->Fr(soln,0));
+    //addFloat(gv, "fz", m_spFlow->fz(soln,0));
 
     return inlt;
 
@@ -827,6 +834,7 @@ void SprayOutlet1D::init()
     Inlet1D::init();
     m_nsp = m_nsp - c_offset_nl - 1;
     m_spFlow = (SprayFlame*)m_flow;
+    m_numFuelSpecies = m_spFlow->getNumFuelSpecies();
 }
 
 void SprayOutlet1D::eval(size_t jg, doublereal* xg, doublereal* rg, integer* diagg,
@@ -852,13 +860,15 @@ void SprayOutlet1D::eval(size_t jg, doublereal* xg, doublereal* rg, integer* dia
         rb[c_offset_Ul] = xb[c_offset_Ul] - xb[c_offset_Ul + nc];
         rb[c_offset_vl] = xb[c_offset_vl] - xb[c_offset_vl + nc];
         rb[c_offset_Tl] = xb[c_offset_Tl] - xb[c_offset_Tl + nc];
-        rb[c_offset_ml] = xb[c_offset_ml] - xb[c_offset_ml + nc];
+	for (size_t i = 0; i < m_numFuelSpecies; i++)
+             rb[c_offset_ml] = xb[c_offset_ml+i] - xb[c_offset_ml+i + nc];
         rb[c_offset_nl] = xb[c_offset_nl] - xb[c_offset_nl + nc];
 
         db[c_offset_Ul] = 0;
         db[c_offset_vl] = 0; 
         db[c_offset_Tl] = 0;
-        db[c_offset_ml] = 0;
+	for (size_t i = 0; i < m_numFuelSpecies; i++)
+             db[c_offset_ml+i] = 0;
         db[c_offset_nl] = 0;
 
     }
@@ -868,17 +878,19 @@ void SprayOutlet1D::eval(size_t jg, doublereal* xg, doublereal* rg, integer* dia
         double* xb = x - nc;
         double* rb = r - nc;
         int* db = diag - nc;
-
+    
         rb[c_offset_Ul] = xb[c_offset_Ul] - xb[c_offset_Ul - nc];
         rb[c_offset_vl] = xb[c_offset_vl] - xb[c_offset_vl - nc];
         rb[c_offset_Tl] = xb[c_offset_Tl] - xb[c_offset_Tl - nc];
-        rb[c_offset_ml] = xb[c_offset_ml] - xb[c_offset_ml - nc];
+	for (size_t i = 0; i < m_numFuelSpecies; i++)
+             rb[c_offset_ml + i] = xb[c_offset_ml + i] - xb[c_offset_ml + i - nc];
         rb[c_offset_nl] = xb[c_offset_nl] - xb[c_offset_nl - nc];
 
         db[c_offset_Ul] = 0;
         db[c_offset_vl] = 0; 
         db[c_offset_Tl] = 0;
-        db[c_offset_ml] = 0;
+	for (size_t i = 0; i < m_numFuelSpecies; i++)
+             db[c_offset_ml + i] = 0;
         db[c_offset_nl] = 0;
 
     }
@@ -894,19 +906,21 @@ XML_Node& SprayOutlet1D::save(XML_Node& o, const doublereal* const soln)
     addFloat(gv, "Ul", sol[c_offset_Ul]);
     addFloat(gv, "vl", sol[c_offset_vl]);
     addFloat(gv, "Tl", sol[c_offset_Tl]);
-    addFloat(gv, "ml", sol[c_offset_ml]);
     addFloat(gv, "nl", sol[c_offset_nl]);
+    for (size_t i = 0; i < m_numFuelSpecies; i++) 
+         addFloat(gv, "ml_"+ std::to_string(i), sol[c_offset_ml+i]);
 
-    addFloat(gv, "Dgf", m_spFlow->Dgf(lastPoint()-1));
-    addFloat(gv, "prs", m_spFlow->prs(soln,lastPoint()-1));
-    addFloat(gv, "Lv", m_spFlow->Lv());
-    addFloat(gv, "cpl", m_spFlow->cpl(soln,lastPoint()-1));
-    addFloat(gv, "cpgf", m_spFlow->cpgf(soln,lastPoint()-1));
-    addFloat(gv, "Yrs", m_spFlow->Yrs(soln,lastPoint()-1));
-    addFloat(gv, "mdot", m_spFlow->mdot(soln,lastPoint()-1));
-    addFloat(gv, "q", m_spFlow->q(soln,lastPoint()-1));
-    addFloat(gv, "Fr", m_spFlow->Fr(soln,lastPoint()-1));
-    addFloat(gv, "fz", m_spFlow->fz(soln,lastPoint()-1));
+    // TODO : Modify for multicomponent. Comment for time being
+    //addFloat(gv, "Dgf", m_spFlow->Dgf(lastPoint()-1));
+    //addFloat(gv, "prs", m_spFlow->prs(soln,lastPoint()-1));
+    //addFloat(gv, "Lv", m_spFlow->Lv());
+    //addFloat(gv, "cpl", m_spFlow->cpl(soln,lastPoint()-1));
+    //addFloat(gv, "cpgf", m_spFlow->cpgf(soln,lastPoint()-1));
+    //addFloat(gv, "Yrs", m_spFlow->Yrs(soln,lastPoint()-1));
+    //addFloat(gv, "mdot", m_spFlow->mdot(soln,lastPoint()-1));
+    //addFloat(gv, "q", m_spFlow->q(soln,lastPoint()-1));
+    //addFloat(gv, "Fr", m_spFlow->Fr(soln,lastPoint()-1));
+    //addFloat(gv, "fz", m_spFlow->fz(soln,lastPoint()-1));
 
     return inlt;
 

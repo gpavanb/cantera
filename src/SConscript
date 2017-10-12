@@ -71,6 +71,8 @@ for subdir, extensions, setup in libs:
         env2.Requires(objects, pch)
     libraryTargets.extend(objects)
 
+# link to GC library
+localenv.Append(LIBS=['gc','gfortran'])
 
 # build the Cantera static library
 lib = build(localenv.StaticLibrary('../lib/cantera', libraryTargets,
@@ -87,6 +89,7 @@ if localenv['blas_lapack_libs']:
                     LIBPATH=localenv['blas_lapack_dir'])
 if localenv['system_fmt']:
     localenv.Append(LIBS='fmt')
+
 
 # link to CGAL library
 #localenv.Append(LIBS=['gmp','CGAL','CGAL_Core'])
