@@ -526,15 +526,22 @@ public:
     }
 
     void updateFuelSpecies(const std::vector<std::string> palette) {
-        for (size_t i = 0; i < palette.size(); i++)
-          c_offset_fuel[i] = componentIndex(palette[i]) - c_offset_Y;
         numFuelSpecies = palette.size();
 	m_palette = palette;
+	c_offset_fuel.resize(numFuelSpecies);
+        for (size_t i = 0; i < numFuelSpecies; i++)
+          c_offset_fuel[i] = componentIndex(palette[i]) - c_offset_Y;
     }
 
     size_t getNumFuelSpecies() {
          return numFuelSpecies;
     }
+
+   
+    std::vector<doublereal> getMW();
+
+    std::vector<doublereal> getRhoL(double T); 
+
 
 protected:
 

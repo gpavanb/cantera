@@ -1009,7 +1009,11 @@ XML_Node& FreeFlame::save(XML_Node& o, const doublereal* const sol)
 SprayFlame::SprayFlame(IdealGasPhase* ph, std::string fuel, std::vector<std::string> palette, size_t nsp, size_t points) :
     AxiStagnFlow(ph, nsp, points)
 {
-    m_nv = c_offset_Y+m_nsp+c_offset_nl+1;
+    initialize_gc(fuel);
+    size_t ns = numSpecies();
+    updateFuelSpecies(palette);
+
+    m_nv = c_offset_Y+m_nsp+c_offset_ml+ns;
     Domain1D::resize(m_nv,points);
 
     setBounds(c_offset_Y+m_nsp+c_offset_Ul, -1e20, 1e20); // no bounds on Ul
@@ -1019,9 +1023,6 @@ SprayFlame::SprayFlame(IdealGasPhase* ph, std::string fuel, std::vector<std::str
 
     setID("spray flame");
 
-    initialize_gc(fuel);
-    size_t ns = numSpecies();
-    updateFuelSpecies(palette);
     
     for (size_t i = 0; i < ns; i++)
         setBounds(c_offset_Y+m_nsp+c_offset_ml+i, -1e-7, 1e20); // bounds on ml
@@ -1092,18 +1093,18 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
             //------------------------------------------------
             //    Continuity equation
             //------------------------------------------------
-            rsd[index(c_offset_U,j)] += (nl(x,j)*sum_mdot_j + nl(x,j+1)*sum_mdot_jp1)/2.0;
+		    rsd[index(c_offset_U,j)] += (nl(x,j)*sum_mdot_j + nl(x,j+1)*sum_mdot_jp1)/2.0;
 
-            //------------------------------------------------
-            //    Radial momentum equation
-            //
-            //    \rho dV/dt + \rho u dV/dz + \rho V^2
-            //       = d(\mu dV/dz)/dz - lambda
-            //         + nl mdot (Ul - Ug) - nl Fr
-            //-------------------------------------------------
-            // rsd[index(c_offset_V,j)] -= ( nl(x,j) * Fr(x,j) / m_rho[j] );
-            rsd[index(c_offset_V,j)] += 
-                (nl(x,j) * sum_mdot_j * (Ul(x,j)-V(x,j)) - nl(x,j) * Fr(x,j)) / m_rho[j];
+		    //------------------------------------------------
+		    //    Radial momentum equation
+		    //
+		    //    \rho dV/dt + \rho u dV/dz + \rho V^2
+		    //       = d(\mu dV/dz)/dz - lambda
+		    //         + nl mdot (Ul - Ug) - nl Fr
+		    //-------------------------------------------------
+		    // rsd[index(c_offset_V,j)] -= ( nl(x,j) * Fr(x,j) / m_rho[j] );
+		    rsd[index(c_offset_V,j)] += 
+			(nl(x,j) * sum_mdot_j * (Ul(x,j)-V(x,j)) - nl(x,j) * Fr(x,j)) / m_rho[j];
 
             //-------------------------------------------------
             //    Species equations
@@ -1114,16 +1115,21 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
 	    // Refer to Olguin, Gutheil (1) and (10)
             //-------------------------------------------------
             for (size_t k = 0; k < m_nsp; k++) {
-                doublereal delta_kf = 0.0;
+
+                // Identify liquid species number of gas species
 		size_t idx = 0;
 		for (idx = 0; idx < numFuelSpecies; idx++) {
-                    if (k == c_offset_fuel[idx]) { 
-                        delta_kf = 1.0;
+                    if (k == c_offset_fuel[idx]) 
 			break;
-		    }
                 }
-                rsd[index(c_offset_Y + k, j)] += 
-                    (delta_kf * mdot_j[idx] - Y(x,k,j) * sum_mdot_j) * nl(x,j) / m_rho[j];
+                if (idx < numFuelSpecies) {
+                     rsd[index(c_offset_Y + k, j)] += 
+                         (mdot_j[idx] - Y(x,k,j) * sum_mdot_j) * nl(x,j) / m_rho[j];
+                }
+                else {
+                     rsd[index(c_offset_Y + k, j)] += 
+                         (- Y(x,k,j) * sum_mdot_j) * nl(x,j) / m_rho[j];
+                }
             }
 
             //-----------------------------------------------
@@ -1293,16 +1299,19 @@ std::vector<double> SprayFlame::source(const doublereal* x, size_t j) const {
     // Get mass fractions of each liquid component
     std::vector<doublereal> Ycomp_l(numFuelSpecies);
     for (auto& f : Ycomp_l) f = mlk(x,&f-&Ycomp_l[0],j);
+    doublereal sum_Ycomp_l = std::accumulate(Ycomp_l.begin(),Ycomp_l.end(), 0.0);
+    for (auto& f : Ycomp_l) f /= sum_Ycomp_l;
 
     // Get mixture molecular weight
-    doublereal MWmix = 0.0;
     std::vector<doublereal> MWVec(numFuelSpecies);
     MW(MWVec.data());
 
     // Get mole fraction
     std::vector<doublereal> Xcomp_l(numFuelSpecies);
     for (size_t i = 0; i < numFuelSpecies; i++)
-	 Xcomp_l[i] = MWmix*Ycomp_l[i]/MWVec[i];
+	 Xcomp_l[i] = Ycomp_l[i]/MWVec[i];
+    doublereal sum_Xcomp_l = std::accumulate(Xcomp_l.begin(), Xcomp_l.end(), 0.0);
+    for (auto& f : Xcomp_l) f /= sum_Xcomp_l;
 
     // Saturation pressure
     std::vector<doublereal> Psat_comp(numFuelSpecies);
@@ -1465,7 +1474,7 @@ std::vector<double> SprayFlame::source(const doublereal* x, size_t j) const {
     // Source term is mass(# species) + temperature + (non latent droplet term) + (droplet specific heat)
     // Last two quantities required for liquid phase equation
     std::vector<double> sourceTerm(numFuelSpecies + 3, 0.0);
-    std::vector<double>::iterator mdotEnd = (sourceTerm.end() - 1);
+    std::vector<double>::iterator mdotEnd = (sourceTerm.end() - 3);
 
     // Compute mass source term
     std::vector<double> LvVec(numFuelSpecies);
@@ -1512,6 +1521,18 @@ std::vector<double> SprayFlame::source(const doublereal* x, size_t j) const {
     return sourceTerm;
 }
 
+
+std::vector<doublereal> SprayFlame::getMW() {
+    std::vector<doublereal> MWVec(numFuelSpecies);
+    MW(MWVec.data());
+    return MWVec;
+}
+
+std::vector<doublereal> SprayFlame::getRhoL(double T) {
+    std::vector<doublereal> rhol(numFuelSpecies);
+    rho_l(rhol.data(),&T);
+    return rhol;
+}
 
 doublereal SprayFlame::rhol(const doublereal* x, size_t j) const {
     // Calculate average density
@@ -1574,7 +1595,7 @@ string SprayFlame::componentName(size_t n) const
 	    else if (idx == 3) 
                 return "nl";
 	    else
-                return "ml_" + m_palette[n - c_offset_ml];
+                return "ml_" + m_palette[idx - c_offset_ml];
         } else 
             return "<unknown>";
     }

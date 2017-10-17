@@ -8,6 +8,9 @@
 #include "cantera/base/ctml.h"
 #include "cantera/oneD/StFlow.h"
 
+#define PI 3.1416
+
+#include <algorithm> // accumulate, inner_product
 #include <string>
 
 using namespace std;
@@ -753,9 +756,37 @@ SprayInlet1D::SprayInlet1D() :
 void SprayInlet1D::init()
 {
     Inlet1D::init();
-    m_nsp = m_nsp - c_offset_nl - 1;
     m_spFlow = (SprayFlame*)m_flow;
     m_numFuelSpecies = m_spFlow->getNumFuelSpecies();
+    m_nsp = m_nsp - c_offset_ml - m_numFuelSpecies;
+}
+
+// Defined here because gc_wrap.h is required and will conflict if 
+// included in a header file
+void SprayInlet1D::setDropletMass(doublereal d0, std::vector<doublereal> xl) { 
+
+     // Get MW and rhoL
+     std::vector<doublereal> MWVec = m_spFlow->getMW();
+     std::vector<doublereal> rhoL = m_spFlow->getRhoL(m_Tl0);
+
+     // Get mass fractions
+     doublereal MWmix = std::inner_product(MWVec.begin(),MWVec.end(),xl.begin(),0.0);
+     std::vector<doublereal> yl(m_numFuelSpecies);
+     for (size_t i = 0; i < m_numFuelSpecies; i++)
+          yl[i] = xl[i] * MWVec[i] / MWmix;     
+ 
+     // Get mass of total droplet 
+     double rho_liquid = 0.0;
+     for (size_t i = 0; i < m_numFuelSpecies; i++)
+          rho_liquid += yl[i]/MWVec[i];
+     rho_liquid = 1.0/rho_liquid;
+
+     doublereal m0 = (PI/6.)*pow(d0,3.0)*rho_liquid;     
+ 
+     // Assign to vector
+     m_mlk0.resize(m_numFuelSpecies);
+     for (size_t i = 0; i < m_numFuelSpecies; i++)
+          m_mlk0[i] = m0*yl[i];
 }
 
 void SprayInlet1D::eval(size_t jg, doublereal* xg, doublereal* rg,
@@ -832,9 +863,9 @@ XML_Node& SprayInlet1D::save(XML_Node& o, const doublereal* const soln)
 void SprayOutlet1D::init()
 {
     Inlet1D::init();
-    m_nsp = m_nsp - c_offset_nl - 1;
     m_spFlow = (SprayFlame*)m_flow;
     m_numFuelSpecies = m_spFlow->getNumFuelSpecies();
+    m_nsp = m_nsp - c_offset_ml - m_numFuelSpecies;
 }
 
 void SprayOutlet1D::eval(size_t jg, doublereal* xg, doublereal* rg, integer* diagg,

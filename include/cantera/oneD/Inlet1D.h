@@ -330,8 +330,10 @@ public:
         m_nl0 = nl;
     }
 
-    void setDropletMass(std::vector<doublereal> mlk) {
-         m_mlk0 = mlk;
+    void setDropletMass(doublereal d0, std::vector<double> xl); 
+
+    std::vector<doublereal> getDropletMass() {
+         return m_mlk0;
     }
 
     void setDropletInjectionVel(const doublereal vl) {
