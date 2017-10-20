@@ -433,7 +433,10 @@ protected:
 
     //! Update the transport properties at grid points in the range from `j0`
     //! to `j1`, based on solution `x`.
-    void updateTransport(doublereal* x, size_t j0, size_t j1);
+    void updateTransport(const doublereal* x, size_t j0, size_t j1);
+
+    // Update transport properties in range. Inclusive. Use gas at location and used in droplet model
+    void updateTransportLocal(const doublereal* x, size_t j0, size_t j1);
 
 private:
     vector_fp m_ybar;
@@ -504,7 +507,7 @@ friend class SprayInlet1D;
 friend class SprayOutlet1D;
 
 public:
-    SprayFlame(IdealGasPhase* ph = 0, std::string fuel = "", std::vector<std::string> palette = {""}, size_t nsp = 1, size_t points = 1);
+    SprayFlame(IdealGasPhase* ph = 0, std::string fuel = "", std::vector<std::string> palette = {""}, std::string evapModel = "", size_t nsp = 1, size_t points = 1);
 
     virtual void eval(size_t j, doublereal* x, doublereal* r,
                       integer* mask, doublereal rdt);
@@ -622,10 +625,10 @@ protected:
     }
 
     doublereal dl(const doublereal* x, size_t j) const {
-        if (ml(x,j)<std::sqrt(std::numeric_limits<double>::min())) {
+        if (ml(x,j) <= 0.0 || rhol(x,j) <= 0.0) 
             return 0.0;
-        }
-        return std::pow(6.0*ml(x,j)/Pi/rhol(x,j),1.0/3.0);
+        else
+            return std::pow(6.0*ml(x,j)/Pi/rhol(x,j),1.0/3.0);
     }
 
     // TODO : Set this for multicomponent
@@ -642,7 +645,7 @@ protected:
         return m_cp[j];
     }
     
-    std::vector<double> source(const doublereal* x, size_t j) const;
+    std::vector<double> source(const doublereal* x, size_t j);
 
     doublereal Fr(const doublereal* x, size_t j) {
         return 3.0*Pi*dl(x,j)*m_visc[j]*(V(x,j)-Ul(x,j));
@@ -728,7 +731,7 @@ protected:
     std::vector<std::string> m_palette;
 
     // Evaporation model
-    std::string evapModel;
+    std::string m_evapModel;
 
     // Liquid heat capacity
     doublereal m_cpl;

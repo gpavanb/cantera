@@ -778,7 +778,7 @@ void SprayInlet1D::setDropletMass(doublereal d0, std::vector<doublereal> xl) {
      // Get mass of total droplet 
      double rho_liquid = 0.0;
      for (size_t i = 0; i < m_numFuelSpecies; i++)
-          rho_liquid += yl[i]/MWVec[i];
+          rho_liquid += yl[i]/rhoL[i];
      rho_liquid = 1.0/rho_liquid;
 
      doublereal m0 = (PI/6.)*pow(d0,3.0)*rho_liquid;     
