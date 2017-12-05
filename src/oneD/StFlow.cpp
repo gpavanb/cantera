@@ -484,26 +484,27 @@ void StFlow::updateTransport(const doublereal* x, size_t j0, size_t j1)
 
 void StFlow::updateTransportLocal(const doublereal* x, size_t j0, size_t j1)
 {
+     // TODO : Multicomponent commented out
      if (m_do_multicomponent) {
         for (size_t j = j0; j <= j1; j++) {
             setGas(x,j);
-            doublereal wtm = m_thermo->meanMolecularWeight();
-            doublereal rho = m_thermo->density();
+            //doublereal wtm = m_thermo->meanMolecularWeight();
+            //doublereal rho = m_thermo->density();
             m_visc[j] = (m_dovisc ? m_trans->viscosity() : 0.0);
-            m_trans->getMultiDiffCoeffs(m_nsp, &m_multidiff[mindex(0,0,j)]);
+            //m_trans->getMultiDiffCoeffs(m_nsp, &m_multidiff[mindex(0,0,j)]);
 
             // Use m_diff as storage for the factor outside the summation
-            for (size_t k = 0; k < m_nsp; k++) {
-                m_diff[k+j*m_nsp] = m_wt[k] * rho / (wtm*wtm);
-            }
+            //for (size_t k = 0; k < m_nsp; k++) {
+            //    m_diff[k+j*m_nsp] = m_wt[k] * rho / (wtm*wtm);
+            //}
 
             m_tcon[j] = m_trans->thermalConductivity();
-            if (m_do_soret) {
-                m_trans->getThermalDiffCoeffs(m_dthermal.ptrColumn(0) + j*m_nsp);
-            }
+            //if (m_do_soret) {
+            //    m_trans->getThermalDiffCoeffs(m_dthermal.ptrColumn(0) + j*m_nsp);
+            //}
         }
-    } else { // mixture averaged transport
-        for (size_t j = j0; j <= j1; j++) {
+     } else { // mixture averaged transport
+         for (size_t j = j0; j <= j1; j++) {
             setGas(x,j);
             m_visc[j] = (m_dovisc ? m_trans->viscosity() : 0.0);
             m_trans->getMixDiffCoeffs(&m_diff[j*m_nsp]);
@@ -1134,7 +1135,7 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
 		    //       = d(\mu dV/dz)/dz - lambda
 		    //         + nl mdot (Ul - Ug) - nl Fr
 		    //-------------------------------------------------
-		    // rsd[index(c_offset_V,j)] -= ( nl(x,j) * Fr(x,j) / m_rho[j] );
+		    rsd[index(c_offset_V,j)] -= ( nl(x,j) * Fr(x,j) / m_rho[j] );
 		    rsd[index(c_offset_V,j)] += 
 			(nl(x,j) * sum_mdot_j * (Ul(x,j)-V(x,j)) - nl(x,j) * Fr(x,j)) / m_rho[j];
 
@@ -1174,14 +1175,15 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
             //      + nl mdot cp (Tl - Tg) - nl mdot q
             //-----------------------------------------------
             rsd[index(c_offset_T, j)] += 
-                (nl(x,j) * sum_mdot_j * cpgf(x,j) * (Tl(x,j) - T(x,j)) - 
-                 nl(x,j) * sum_mdot_j * q_j) / (m_rho[j]*m_cp[j]);
+                (nl(x,j) * sum_mdot_j * cpgf(x,j) * (Tl(x,j) - T(x,j)))/ (m_rho[j]*m_cp[j]) - 
+                 nl(x,j) * sum_mdot_j * q_j;
 
         }
     }
 
+    
     // Liquid phase
-    for (size_t j = jmin; j <= jmax; j++) {
+    for (size_t j = jmin; j <= jmax; j++) { 
         //----------------------------------------------
         //         left boundary
         //----------------------------------------------
@@ -1217,7 +1219,6 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
         } else if (j == m_points - 1) {
             evalRightBoundaryLiquid(x, rsd, diag, rdt);
         } else { // interior points
-
 	    // TODO : Call source term function only once
 	    std::vector<doublereal> sourceVec_j = source(x,j);
 	    std::vector<doublereal> sourceVec_jp1 = source(x,j+1);
@@ -1228,7 +1229,7 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
 	    //doublereal q_j = sourceVec_j[numFuelSpecies];
 	    //doublereal q_jp1 = sourceVec_jp1[numFuelSpecies];
 
-	    doublereal sum_mdot_j = std::accumulate(mdot_j.begin(), mdot_j.end(),0.0);
+	    //doublereal sum_mdot_j = std::accumulate(mdot_j.begin(), mdot_j.end(),0.0);
 	    //doublereal sum_mdot_jp1 = std::accumulate(mdot_jp1.begin(), mdot_jp1.end(),0.0);
 
 	    doublereal evap_term_j = sourceVec_j[numFuelSpecies + 1];
@@ -1283,10 +1284,8 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
             //-----------------------------------------------
             rsd[index(c_offset_Y+m_nsp+c_offset_Tl,j)] = -vl(x,j)*dTldz(x,j) - 
                     rdt * (Tl(x,j) - Tl_prev(j)) + av_Tl(x,j);
-            if (ml(x,j) > 0.0 && cl_d_j > 0.0) {
-                rsd[index(c_offset_Y+m_nsp+c_offset_Tl,j)] += 
-                    sum_mdot_j*(evap_term_j) / ml(x,j) / cl_d_j;
-            }
+            if (ml(x,j) > 0.0 && cl_d_j > 0.0) 
+                rsd[index(c_offset_Y+m_nsp+c_offset_Tl,j)] += evap_term_j;
             else 
                 rsd[index(c_offset_Y+m_nsp+c_offset_Tl,j)] += 0.0;
  
@@ -1294,7 +1293,8 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
 
         }
 
-    }
+    } 
+    
 
 }
 
@@ -1338,7 +1338,8 @@ std::vector<double> SprayFlame::source(const doublereal* x, size_t j) {
     // Get ambient fractions of each liquid component
     std::vector<doublereal> Yspec(numFuelSpecies);
     for (size_t i = 0; i < numFuelSpecies; i++)
-	 Yspec[i] = Y(x,c_offset_fuel[i],j);		
+	 Yspec[i] = Y(x,c_offset_fuel[i],j);
+
 
     // Get mass fractions of each liquid component
     std::vector<doublereal> Ycomp_l(numFuelSpecies);
@@ -1398,12 +1399,7 @@ std::vector<double> SprayFlame::source(const doublereal* x, size_t j) {
     // Average specific heat capacity
     std::vector<doublereal> c_lVec(numFuelSpecies);
     c_l(c_lVec.data(),&temp);
-    double cl_d = std::inner_product(Xcomp_l.begin(),Xcomp_l.end(),c_lVec.begin(),0.0);
-    double MWmix = std::inner_product(Xcomp_l.begin(),Xcomp_l.end(),MWVec.begin(),0.0);
-    if (MWmix != 0)
-        cl_d /= MWmix; 
-    else
-        cl_d = 0.0;
+    double cl_d = std::inner_product(Ycomp_l.begin(),Ycomp_l.end(),c_lVec.begin(),0.0);
     
     // 1/3rd rule
     double Tref = (2.0/3.0)*Tl(x,j) + (1.0/3.0)*temp;
@@ -1465,13 +1461,13 @@ std::vector<double> SprayFlame::source(const doublereal* x, size_t j) {
     doublereal Sc_ref_g_avg = mu_ref/(rho_ref*D_ref_bar);
 
     // Sherwood and Nusselt numbers
-    doublereal Nu_ref_g = 2.0 + 0.552 * pow(Red_sl,0.5)*pow(Pr_ref_g,1.0/3.0);
+    doublereal Nu_ref_g = 2.0 + 0.552 * pow(Red_sl,0.5)*pow(std::max(0.0,Pr_ref_g),1.0/3.0);
     std::vector<double> Sh_ref_g(numFuelSpecies);
     for (size_t i = 0; i < numFuelSpecies; i++)	
-	 Sh_ref_g[i] = 2.0 + 0.552 * pow(Red_sl,0.5)*pow(Sc_ref_g[i],1.0/3.0);
+	 Sh_ref_g[i] = 2.0 + 0.552 * pow(Red_sl,0.5)*pow(std::max(0.0,Sc_ref_g[i]),1.0/3.0);
 
     // Mixture-averaged Sherwood
-    doublereal Sh_ref_g_avg = 2.0 + 0.552 * pow(Red_sl,0.5)*pow(Sc_ref_g_avg,1.0/3.0);
+    doublereal Sh_ref_g_avg = 2.0 + 0.552 * pow(Red_sl,0.5)*pow(std::max(0.0,Sc_ref_g_avg),1.0/3.0);
     
     // Mass Spalding number
     doublereal sum_Yfuels_gas = std::accumulate(Yspec.begin(),Yspec.end(),0.0);
@@ -1530,10 +1526,6 @@ std::vector<double> SprayFlame::source(const doublereal* x, size_t j) {
     // Compute mass source term
     std::vector<double> LvVec(numFuelSpecies);
     Hv(LvVec.data(),&temp);
-
-    // TODO : Convert to mass units
-    for (size_t i = 0; i < numFuelSpecies; i++)
-        LvVec[i] /= MWVec[i];
     
 
     if (isBoiling == true) {
@@ -1560,17 +1552,16 @@ std::vector<double> SprayFlame::source(const doublereal* x, size_t j) {
     doublereal Evap_latent_heat = std::inner_product(sourceTerm.begin(),mdotEnd,LvVec.begin(),0.0);
 
     // Temperature source term
-    // Multiplied by md*cl_d as compared to Knudsen, Pitsch
     if (isBoiling == true) { 
 	 sourceTerm[numFuelSpecies] = 0.0;
 	 sourceTerm[numFuelSpecies + 1] = 0.0;
     }
     else {
          if (ml(x,j) > 0.0 && dl(x,j) > 0.0) {
-     	   sourceTerm[numFuelSpecies] = ml(x,j) * Nu_ref_g * cp_ref * f2 * ( temp - Tl(x,j) ) / ( 3.0 * Pr_ref_g * tau_d ) 
-				        + Evap_latent_heat;
+     	   sourceTerm[numFuelSpecies] = Nu_ref_g * cp_ref * f2 * ( T(x,j) - Tl(x,j) ) / ( 3.0 * Pr_ref_g * cl_d * tau_d ) 
+				        + Evap_latent_heat/(ml(x,j)*cl_d);
     }
-	 sourceTerm[numFuelSpecies + 1] = sourceTerm[numFuelSpecies] - Evap_latent_heat; 	
+	 sourceTerm[numFuelSpecies + 1] = sourceTerm[numFuelSpecies] - Evap_latent_heat/(ml(x,j)*cl_d); 	
     }
 
     // Set specific heat capacity. Used in flamelet equation in eval
