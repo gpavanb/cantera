@@ -481,38 +481,6 @@ void StFlow::updateTransport(const doublereal* x, size_t j0, size_t j1)
     }
 }
 
-
-void StFlow::updateTransportLocal(const doublereal* x, size_t j0, size_t j1)
-{
-     // TODO : Multicomponent commented out
-     if (m_do_multicomponent) {
-        for (size_t j = j0; j <= j1; j++) {
-            setGas(x,j);
-            //doublereal wtm = m_thermo->meanMolecularWeight();
-            //doublereal rho = m_thermo->density();
-            m_visc[j] = (m_dovisc ? m_trans->viscosity() : 0.0);
-            //m_trans->getMultiDiffCoeffs(m_nsp, &m_multidiff[mindex(0,0,j)]);
-
-            // Use m_diff as storage for the factor outside the summation
-            //for (size_t k = 0; k < m_nsp; k++) {
-            //    m_diff[k+j*m_nsp] = m_wt[k] * rho / (wtm*wtm);
-            //}
-
-            m_tcon[j] = m_trans->thermalConductivity();
-            //if (m_do_soret) {
-            //    m_trans->getThermalDiffCoeffs(m_dthermal.ptrColumn(0) + j*m_nsp);
-            //}
-        }
-     } else { // mixture averaged transport
-         for (size_t j = j0; j <= j1; j++) {
-            setGas(x,j);
-            m_visc[j] = (m_dovisc ? m_trans->viscosity() : 0.0);
-            m_trans->getMixDiffCoeffs(&m_diff[j*m_nsp]);
-            m_tcon[j] = m_trans->thermalConductivity();
-        }
-    }
-}
-
 void StFlow::showSolution(const doublereal* x)
 {
     writelog("    Pressure:  {:10.4g} Pa\n", m_press);
@@ -1135,7 +1103,7 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
 		    //       = d(\mu dV/dz)/dz - lambda
 		    //         + nl mdot (Ul - Ug) - nl Fr
 		    //-------------------------------------------------
-		    rsd[index(c_offset_V,j)] -= ( nl(x,j) * Fr(x,j) / m_rho[j] );
+		    //rsd[index(c_offset_V,j)] -= ( nl(x,j) * Fr(x,j) / m_rho[j] );
 		    rsd[index(c_offset_V,j)] += 
 			(nl(x,j) * sum_mdot_j * (Ul(x,j)-V(x,j)) - nl(x,j) * Fr(x,j)) / m_rho[j];
 
@@ -1175,8 +1143,8 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
             //      + nl mdot cp (Tl - Tg) - nl mdot q
             //-----------------------------------------------
             rsd[index(c_offset_T, j)] += 
-                (nl(x,j) * sum_mdot_j * cpgf(x,j) * (Tl(x,j) - T(x,j)))/ (m_rho[j]*m_cp[j]) - 
-                 nl(x,j) * sum_mdot_j * q_j;
+                (nl(x,j) * sum_mdot_j * cpgf(x,j) * (Tl(x,j) - T(x,j)) - 
+                 nl(x,j) * q_j)/ (m_rho[j]*m_cp[j]);
 
         }
     }
@@ -1292,7 +1260,6 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
             diag[index(c_offset_Y+m_nsp+c_offset_Tl, j)] = 1;
 
         }
-
     } 
     
 
@@ -1327,6 +1294,11 @@ std::vector<double> SprayFlame::source(const doublereal* x, size_t j) {
     // Source term is mass(# species) + temperature + (non latent droplet term) + (droplet specific heat)
     // Last two quantities required for liquid phase equation
     std::vector<double> sourceTerm(numFuelSpecies + 3, 0.0);
+    
+    // Return zero if last element
+    if (j == m_points - 1)
+         return sourceTerm;    
+
     std::vector<double>::iterator mdotEnd = (sourceTerm.end() - 3);
 
     // Start the drama only if droplet exists
@@ -1429,10 +1401,6 @@ std::vector<double> SprayFlame::source(const doublereal* x, size_t j) {
     doublereal rho_ref = m_press*MW_ref/(R_u * Tref);
 	    
     // Evaluate mixture viscosity, specific heat, thermal conductivity
-    // NOTE : Using Cantera mixing rules
-    // Update transport and thermo. Transport range is not inclusive
-    updateTransportLocal(x,j,j);
-    updateThermo(x,j,j); 
     doublereal mu_ref = m_visc[j];
     doublereal cp_ref = m_cp[j];
     doublereal lambda_ref = m_tcon[j];
@@ -1501,12 +1469,14 @@ std::vector<double> SprayFlame::source(const doublereal* x, size_t j) {
 	     for (size_t i = 0; i < numFuelSpecies; i++)
 		  Bm_k[i] = pow(1.0 + Bm,eta_k[i]) - 1.0;
 	 }
-    }
 
     // Calculate BM_k based on individual Spalding numbers for the distillation model
     if (m_evapModel == "distillation") {
 	 for (size_t i = 0; i < numFuelSpecies; i++)
-	      eps_k[i] = Ysat_comp[i] + ( Ysat_comp[i] - Yspec[i] ) / Bm_k[i];
+              if (Bm_k[i] == 0)
+                   eps_k[i] = Ysat_comp[i];
+              else 
+	           eps_k[i] = Ysat_comp[i] + ( Ysat_comp[i] - Yspec[i] ) / Bm_k[i];
     }
     // For the diffusion model, you only get the entire source term from the Spalding numbers
     // The split is however decided only based on the liquid composition
@@ -1523,21 +1493,23 @@ std::vector<double> SprayFlame::source(const doublereal* x, size_t j) {
 	   f /= sum_eps_k;
     }
 
+    }
+
     // Compute mass source term
     std::vector<double> LvVec(numFuelSpecies);
     Hv(LvVec.data(),&temp);
     
-
+    // Mass source terms must be positive 
     if (isBoiling == true) {
         doublereal latentTerm = std::inner_product(LvVec.begin(),LvVec.end(),eps_k.begin(),0.0);
 	// This term is obtained by forcing dTdt is zero
 	for (size_t i = 0; i < numFuelSpecies; i++)
-	     sourceTerm[i] = ml(x,j) * cp_ref * Nu_ref_g * (1.0/tau_d) * (Tl(x,j) - T(x,j)) * eps_k[i]/(3.0 * Pr_ref_g * latentTerm);
+	     sourceTerm[i] = - ml(x,j) * cp_ref * Nu_ref_g * (1.0/tau_d) * (Tl(x,j) - T(x,j)) * eps_k[i]/(3.0 * Pr_ref_g * latentTerm);
     }
     else {
-	 if (Bm > 1.0) {
+	 if (Bm > -1.0) {
 	     for (size_t i = 0; i < numFuelSpecies; i++)
-		  sourceTerm[i] = - Sh_ref_g_avg * ml(x,j) /( 3.0 * Sc_ref_g_avg * tau_d) * log(1.0 + Bm) * eps_k[i];
+		  sourceTerm[i] =  Sh_ref_g_avg * ml(x,j) /( 3.0 * Sc_ref_g_avg * tau_d) * log(1.0 + Bm) * eps_k[i];
 	 }
     }
     
@@ -1550,6 +1522,8 @@ std::vector<double> SprayFlame::source(const doublereal* x, size_t j) {
 
     // Latent heat of vaporization
     doublereal Evap_latent_heat = std::inner_product(sourceTerm.begin(),mdotEnd,LvVec.begin(),0.0);
+    // Reverse latent heat sign due to mdot reversal
+    Evap_latent_heat = -Evap_latent_heat;
 
     // Temperature source term
     if (isBoiling == true) { 
@@ -1558,10 +1532,10 @@ std::vector<double> SprayFlame::source(const doublereal* x, size_t j) {
     }
     else {
          if (ml(x,j) > 0.0 && dl(x,j) > 0.0) {
-     	   sourceTerm[numFuelSpecies] = Nu_ref_g * cp_ref * f2 * ( T(x,j) - Tl(x,j) ) / ( 3.0 * Pr_ref_g * cl_d * tau_d ) 
-				        + Evap_latent_heat/(ml(x,j)*cl_d);
+     	   sourceTerm[numFuelSpecies] = ml(x,j) * Nu_ref_g * cp_ref * f2 * ( T(x,j) - Tl(x,j) ) / ( 3.0 * Pr_ref_g * tau_d ) 
+				        + Evap_latent_heat;
     }
-	 sourceTerm[numFuelSpecies + 1] = sourceTerm[numFuelSpecies] - Evap_latent_heat/(ml(x,j)*cl_d); 	
+	 sourceTerm[numFuelSpecies + 1] = sourceTerm[numFuelSpecies] - Evap_latent_heat; 	
     }
 
     // Set specific heat capacity. Used in flamelet equation in eval

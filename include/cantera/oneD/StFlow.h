@@ -632,10 +632,10 @@ protected:
     }
 
     // TODO : Set this for multicomponent
-    doublereal cpl(const doublereal* x, size_t j) {
+    //doublereal cpl(const doublereal* x, size_t j) {
         // assume constant for now
-        return m_cpl;
-    }
+      //  return m_cpl;
+    //}
 
     doublereal cpgf(const doublereal* x,size_t j) {
         // setGas(x,j);
