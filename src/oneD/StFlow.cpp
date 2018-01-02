@@ -1019,6 +1019,7 @@ SprayFlame::SprayFlame(IdealGasPhase* ph, std::string fuel, std::vector<std::str
 
     setBounds(c_offset_Y+m_nsp+c_offset_Ul, -1e20, 1e20); // no bounds on Ul
     setBounds(c_offset_Y+m_nsp+c_offset_vl, -1e20, 1e20); // no bounds on vl
+    // TODO : Set more precise upper bound, especially for volatile liquids
     setBounds(c_offset_Y+m_nsp+c_offset_Tl, 200.0, 5000.0); // bounds on Tl
     setBounds(c_offset_Y+m_nsp+c_offset_nl, -1e-7, 1e20); // positivity for nl
 
@@ -1253,7 +1254,7 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
             rsd[index(c_offset_Y+m_nsp+c_offset_Tl,j)] = -vl(x,j)*dTldz(x,j) - 
                     rdt * (Tl(x,j) - Tl_prev(j)) + av_Tl(x,j);
             if (ml(x,j) > 0.0 && cl_d_j > 0.0) 
-                rsd[index(c_offset_Y+m_nsp+c_offset_Tl,j)] += evap_term_j;
+                rsd[index(c_offset_Y+m_nsp+c_offset_Tl,j)] += evap_term_j/ml(x,j) / cl_d_j;
             else 
                 rsd[index(c_offset_Y+m_nsp+c_offset_Tl,j)] += 0.0;
  
@@ -1324,6 +1325,9 @@ std::vector<double> SprayFlame::source(const doublereal* x, size_t j) {
     // Get mixture molecular weight
     std::vector<doublereal> MWVec(numFuelSpecies);
     MW(MWVec.data());
+    // Convert to Cantera units
+    for (auto &f : MWVec)
+         f *= 1e3;
 
     // Get mole fraction
     std::vector<doublereal> Xcomp_l(numFuelSpecies);
@@ -1336,8 +1340,8 @@ std::vector<double> SprayFlame::source(const doublereal* x, size_t j) {
 
     // Saturation pressure
     std::vector<doublereal> Psat_comp(numFuelSpecies);
-    double temp = Tl(x,j);
-    PSat(Psat_comp.data(),&temp);
+    double tl = Tl(x,j);
+    PSat(Psat_comp.data(),&tl);
 
     // Raoult's law
     std::vector<doublereal> Xsat_comp(numFuelSpecies);
@@ -1354,6 +1358,7 @@ std::vector<double> SprayFlame::source(const doublereal* x, size_t j) {
     doublereal sum_Xsat_comp = std::accumulate(Xsat_comp.begin(), Xsat_comp.end(), 0.0);
     if (sum_Xsat_comp >= 1.0) {
 	 isBoiling = true;
+         sum_Xsat_comp = 1.0;
 	 for (size_t i = 0; i < numFuelSpecies; i++)
 	      Xsat_comp[i] = Xsat_comp[i]/sum_Xsat_comp;
     }     
@@ -1363,18 +1368,18 @@ std::vector<double> SprayFlame::source(const doublereal* x, size_t j) {
 
     // Mass fraction at droplet surface
     std::vector<doublereal> Ysat_comp(numFuelSpecies);
-    doublereal MWsat_comp = std::inner_product(Xsat_comp.begin(),Xsat_comp.end(),MWVec.begin(),0.0) + X_air*m_wtm[j]; 
+    doublereal MWsat_comp = std::inner_product(Xsat_comp.begin(),Xsat_comp.end(),MWVec.begin(),0.0) + X_air*m_wtm[j];
     for (size_t i = 0; i < numFuelSpecies; i++)
 	 Ysat_comp[i] = Xsat_comp[i]*MWVec[i]/MWsat_comp;
     //doublereal Y_air = X_air * m_wtm[j] / MWsat_comp;
 
     // Average specific heat capacity
     std::vector<doublereal> c_lVec(numFuelSpecies);
-    c_l(c_lVec.data(),&temp);
+    c_l(c_lVec.data(),&tl);
     double cl_d = std::inner_product(Ycomp_l.begin(),Ycomp_l.end(),c_lVec.begin(),0.0);
     
     // 1/3rd rule
-    double Tref = (2.0/3.0)*Tl(x,j) + (1.0/3.0)*temp;
+    double Tref = (2.0/3.0)*Tl(x,j) + (1.0/3.0)*T(x,j);
 
     // Reference fractions
     std::vector<doublereal> Yref_comp(numFuelSpecies);
@@ -1393,7 +1398,7 @@ std::vector<double> SprayFlame::source(const doublereal* x, size_t j) {
     std::vector<doublereal> Xref_comp(numFuelSpecies);
     for (size_t i = 0; i < numFuelSpecies; i++)
 	 MW_ref += Yref_comp[i]/MWVec[i];
-    MW_ref = 1.0/MW_ref;
+    MW_ref = 1.0e-3/MW_ref;
     for (size_t i = 0; i < numFuelSpecies; i++)
 	 Xref_comp[i] = Yref_comp[i]*MW_ref/MWVec[i];
 
@@ -1497,14 +1502,14 @@ std::vector<double> SprayFlame::source(const doublereal* x, size_t j) {
 
     // Compute mass source term
     std::vector<double> LvVec(numFuelSpecies);
-    Hv(LvVec.data(),&temp);
+    Hv(LvVec.data(),&tl);
     
     // Mass source terms must be positive 
     if (isBoiling == true) {
         doublereal latentTerm = std::inner_product(LvVec.begin(),LvVec.end(),eps_k.begin(),0.0);
 	// This term is obtained by forcing dTdt is zero
 	for (size_t i = 0; i < numFuelSpecies; i++)
-	     sourceTerm[i] = - ml(x,j) * cp_ref * Nu_ref_g * (1.0/tau_d) * (Tl(x,j) - T(x,j)) * eps_k[i]/(3.0 * Pr_ref_g * latentTerm);
+            sourceTerm[i] = - ml(x,j) * cp_ref * Nu_ref_g * (1.0/tau_d) * (Tl(x,j) - T(x,j)) * eps_k[i]/(3.0 * Pr_ref_g * latentTerm);
     }
     else {
 	 if (Bm > -1.0) {
@@ -1532,7 +1537,7 @@ std::vector<double> SprayFlame::source(const doublereal* x, size_t j) {
     }
     else {
          if (ml(x,j) > 0.0 && dl(x,j) > 0.0) {
-     	   sourceTerm[numFuelSpecies] = ml(x,j) * Nu_ref_g * cp_ref * f2 * ( T(x,j) - Tl(x,j) ) / ( 3.0 * Pr_ref_g * tau_d ) 
+     	   sourceTerm[numFuelSpecies] = ml(x,j) * Nu_ref_g * cp_ref * f2 * ( T(x,j) - Tl(x,j) ) / ( 3.0 * Pr_ref_g * tau_d )
 				        + Evap_latent_heat;
     }
 	 sourceTerm[numFuelSpecies + 1] = sourceTerm[numFuelSpecies] - Evap_latent_heat; 	
@@ -1550,6 +1555,9 @@ std::vector<double> SprayFlame::source(const doublereal* x, size_t j) {
 std::vector<doublereal> SprayFlame::getMW() {
     std::vector<doublereal> MWVec(numFuelSpecies);
     MW(MWVec.data());
+    // Convert to Cantera units
+    for (auto &f : MWVec)
+         f *= 1e3;
     return MWVec;
 }
 
@@ -1562,7 +1570,7 @@ std::vector<doublereal> SprayFlame::getRhoL(double T) {
 doublereal SprayFlame::rhol(const doublereal* x, size_t j) const {
     // Calculate average density
     std::vector<doublereal> rhoL(numFuelSpecies);
-    doublereal temp = T(x,j);
+    doublereal temp = Tl(x,j);
     rho_l(rhoL.data(),&temp);
     double ret = 0.0;
     for (size_t i = 0; i < numFuelSpecies; i++)
