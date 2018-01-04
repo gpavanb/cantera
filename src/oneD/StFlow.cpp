@@ -1009,25 +1009,13 @@ XML_Node& FreeFlame::save(XML_Node& o, const doublereal* const sol)
 SprayFlame::SprayFlame(IdealGasPhase* ph, std::string fuel, std::vector<std::string> palette, std::string evapModel, size_t nsp, size_t points) :
     AxiStagnFlow(ph, nsp, points)
 {
-    initialize_gc(fuel);
-    size_t ns = numSpecies();
-    updateFuelSpecies(palette);
-    m_evapModel = evapModel; 
+    // Call spray phase constructor
+    SprayPhase(fuel, palette, evapModel, this); 
 
-    m_nv = c_offset_Y+m_nsp+c_offset_ml+ns;
+    m_nv = c_offset_Y+m_nsp;
     Domain1D::resize(m_nv,points);
 
-    setBounds(c_offset_Y+m_nsp+c_offset_Ul, -1e20, 1e20); // no bounds on Ul
-    setBounds(c_offset_Y+m_nsp+c_offset_vl, -1e20, 1e20); // no bounds on vl
-    // TODO : Set more precise upper bound, especially for volatile liquids
-    setBounds(c_offset_Y+m_nsp+c_offset_Tl, 200.0, 5000.0); // bounds on Tl
-    setBounds(c_offset_Y+m_nsp+c_offset_nl, -1e-7, 1e20); // positivity for nl
-
     setID("spray flame");
-    
-    // Tighter lower bound for mass
-    for (size_t i = 0; i < ns; i++)
-        setBounds(c_offset_Y+m_nsp+c_offset_ml+i, 0.0, 1e20); // bounds on ml
 }
 
 void SprayFlame::eval(size_t jg, doublereal* xg,
@@ -1051,7 +1039,18 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
         jmax = std::min(jpt+1,m_points-1);
     }
 
+    // Time advance liquid phase till 99% evaporation
+    bool converged = False;
+    while (converged == False) {
+         m_SprayPhase->advance_to_convergence
+         converged = m_sprayPhase->check_grid_vapor
+         m_sprayPhase->reduce_timestep
+    } 
+    std::cout << "Liquid phase results converged" << std::endl;
+    m_sprayPhase->reset_timestep    
+ 
     // Gaseous phase
+    // Gas phase variables require gas solution array as argument by pointer
     for (size_t j = jmin; j <= jmax; j++) {
         //----------------------------------------------
         //         left boundary
@@ -1063,50 +1062,27 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
             // Continuity. This propagates information right-to-left, since
             // rho_u at point 0 is dependent on rho_u at point 1, but not on
             // mdot from the inlet.
-	    std::vector<doublereal> sourceVec_j = source(x,j);
-	    std::vector<doublereal> sourceVec_jp1 = source(x,j+1);
-	    std::vector<doublereal> mdot_j(numFuelSpecies);
-	    std::vector<doublereal> mdot_jp1(numFuelSpecies);
-	    std::copy_n(sourceVec_j.begin(),numFuelSpecies,mdot_j.begin());
-	    std::copy_n(sourceVec_jp1.begin(),numFuelSpecies,mdot_jp1.begin());
-
-	    doublereal sum_mdot_j = std::accumulate(mdot_j.begin(), mdot_j.end(),0.0);
-	    doublereal sum_mdot_jp1 = std::accumulate(mdot_jp1.begin(), mdot_jp1.end(),0.0);
-
-            rsd[index(c_offset_U,0)] += (nl(x,0)*sum_mdot_j + nl(x,1)*sum_mdot_jp1)/2.0;
+            rsd[index(c_offset_U,0)] += (nl(0)*mdot(0) + nl(1)*mdot(1))/2.0;
 
         } else if (j == m_points - 1) {
             continue;
 
         } else { // interior points
-	    // TODO : Modify comments to reflect new equations
 
-	    std::vector<doublereal> sourceVec_j = source(x,j);
-	    std::vector<doublereal> sourceVec_jp1 = source(x,j+1);
-	    std::vector<doublereal> mdot_j(numFuelSpecies);
-	    std::vector<doublereal> mdot_jp1(numFuelSpecies);
-	    std::copy_n(sourceVec_j.begin(),numFuelSpecies,mdot_j.begin());
-	    std::copy_n(sourceVec_jp1.begin(),numFuelSpecies,mdot_jp1.begin());
-	    doublereal q_j = sourceVec_j[numFuelSpecies];
-	    //doublereal q_jp1 = sourceVec_jp1[numFuelSpecies];
-
-	    doublereal sum_mdot_j = std::accumulate(mdot_j.begin(), mdot_j.end(),0.0);
-	    doublereal sum_mdot_jp1 = std::accumulate(mdot_jp1.begin(), mdot_jp1.end(),0.0);
             //------------------------------------------------
             //    Continuity equation
             //------------------------------------------------
-		    rsd[index(c_offset_U,j)] += (nl(x,j)*sum_mdot_j + nl(x,j+1)*sum_mdot_jp1)/2.0;
+		    rsd[index(c_offset_U,j)] += (nl(j)*mdot(j) + nl(j+1)*mdot(j+1))/2.0;
 
-		    //------------------------------------------------
-		    //    Radial momentum equation
-		    //
-		    //    \rho dV/dt + \rho u dV/dz + \rho V^2
-		    //       = d(\mu dV/dz)/dz - lambda
-		    //         + nl mdot (Ul - Ug) - nl Fr
-		    //-------------------------------------------------
-		    //rsd[index(c_offset_V,j)] -= ( nl(x,j) * Fr(x,j) / m_rho[j] );
+	    //------------------------------------------------
+	    //    Radial momentum equation
+	    //
+	    //    \rho dV/dt + \rho u dV/dz + \rho V^2
+	    //       = d(\mu dV/dz)/dz - lambda
+	    //         + nl mdot (Ul - Ug) - nl Fr
+	    //-------------------------------------------------
 		    rsd[index(c_offset_V,j)] += 
-			(nl(x,j) * sum_mdot_j * (Ul(x,j)-V(x,j)) - nl(x,j) * Fr(x,j)) / m_rho[j];
+			(nl(j) * mdot(j) * (Ul(j)-V(x,j)) - nl(j) * Fr(x,j)) / m_rho[j];
 
             //-------------------------------------------------
             //    Species equations
@@ -1126,11 +1102,11 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
                 }
                 if (idx < numFuelSpecies) {
                      rsd[index(c_offset_Y + k, j)] += 
-                         (mdot_j[idx] - Y(x,k,j) * sum_mdot_j) * nl(x,j) / m_rho[j];
+                         (mkdot(idx,j) - Y(x,k,j) * mdot(j)) * nl(j) / m_rho[j];
                 }
                 else {
                      rsd[index(c_offset_Y + k, j)] += 
-                         (- Y(x,k,j) * sum_mdot_j) * nl(x,j) / m_rho[j];
+                         (- Y(x,k,j) * mdot(j)) * nl(j) / m_rho[j];
                 }
             }
 
@@ -1144,13 +1120,36 @@ void SprayFlame::eval(size_t jg, doublereal* xg,
             //      + nl mdot cp (Tl - Tg) - nl mdot q
             //-----------------------------------------------
             rsd[index(c_offset_T, j)] += 
-                (nl(x,j) * sum_mdot_j * cpgf(x,j) * (Tl(x,j) - T(x,j)) - 
-                 nl(x,j) * q_j)/ (m_rho[j]*m_cp[j]);
+                (nl(j) * mdot(j) * cpgf(x,j) * (Tl(j) - T(x,j)) - 
+                 nl(j) * q(j))/ (m_rho[j]*m_cp[j]);
 
         }
     }
 
+///////////////////////
+// Liquid phase
+//////////////////////
+
+SprayPhase::SprayPhase(std::string fuel, std:vector<std::string> palette, std::string evapModel, SprayFlame* sf) {
+
+    initialize_gc(fuel);
+    size_t ns = numSpecies();
+    updateFuelSpecies(palette);
+    m_evapModel = evapModel;
+    m_sprayFlame = sf;
+
+    setBounds(c_offset_Y+m_nsp+c_offset_Ul, -1e20, 1e20); // no bounds on Ul
+    setBounds(c_offset_Y+m_nsp+c_offset_vl, -1e20, 1e20); // no bounds on vl
+    // TODO : Set more precise upper bound, especially for volatile liquids
+    setBounds(c_offset_Y+m_nsp+c_offset_Tl, 200.0, 5000.0); // bounds on Tl
+    setBounds(c_offset_Y+m_nsp+c_offset_nl, -1e-7, 1e20); // positivity for nl
     
+    // Tighter lower bound for mass
+    for (size_t i = 0; i < ns; i++)
+        setBounds(c_offset_Y+m_nsp+c_offset_ml+i, 0.0, 1e20); // bounds on ml
+}
+
+
     // Liquid phase
     for (size_t j = jmin; j <= jmax; j++) { 
         //----------------------------------------------

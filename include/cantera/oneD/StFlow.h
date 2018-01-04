@@ -505,6 +505,7 @@ class SprayFlame : public AxiStagnFlow
 
 friend class SprayInlet1D;
 friend class SprayOutlet1D;
+friend class SprayPhase;
 
 public:
     SprayFlame(IdealGasPhase* ph = 0, std::string fuel = "", std::vector<std::string> palette = {""}, std::string evapModel = "", size_t nsp = 1, size_t points = 1);
@@ -550,6 +551,10 @@ protected:
 
     //! @name Solution components
     //! @{
+    doublereal Tl(size_t j) const {
+         return m_sprayPhase->Tl(j); 
+    }
+
     doublereal Tl(const doublereal* x, size_t j) const {
         return x[index(c_offset_Y+m_nsp+c_offset_Tl,j)];
     }
@@ -597,6 +602,22 @@ protected:
          return prevSoln(c_offset_Y+m_nsp+c_offset_ml+i,j); 
     }
 
+    doublereal nl(size_t j) const {
+         return m_sprayPhase->nl(j); 
+    }
+
+    std::vector<doublereal> mkdot(size_t k, size_t j) const {
+         return m_sprayPhase->mkdot(k,j); 
+    }
+    
+    doublereal mdot(size_t j) const {
+         return m_sprayPhase->mdot(j); 
+    }
+
+    doublereal q(size_t j) const {
+         return m_sprayPhase->q(j); 
+    }
+
     doublereal nl(const doublereal* x, size_t j) const {
         return x[index(c_offset_Y+m_nsp+c_offset_nl,j)];
         // return 0.0;
@@ -625,17 +646,19 @@ protected:
     }
 
     doublereal dl(const doublereal* x, size_t j) const {
+         return m_sprayPhase->dl(x,j); 
+    }
+
+    doublereal dl(const doublereal* x, size_t j) const {
         if (ml(x,j) <= 0.0 || rhol(x,j) <= 0.0) 
             return 0.0;
         else
             return std::pow(6.0*ml(x,j)/Pi/rhol(x,j),1.0/3.0);
     }
 
-    // TODO : Set this for multicomponent
-    //doublereal cpl(const doublereal* x, size_t j) {
-        // assume constant for now
-      //  return m_cpl;
-    //}
+    doublereal cpl(const doublereal* x, size_t j) {
+        return m_sprayPhase->cpl(x,j);
+    }
 
     doublereal cpgf(const doublereal* x,size_t j) {
         // setGas(x,j);
@@ -648,7 +671,7 @@ protected:
     std::vector<double> source(const doublereal* x, size_t j);
 
     doublereal Fr(const doublereal* x, size_t j) {
-        return 3.0*Pi*dl(x,j)*m_visc[j]*(V(x,j)-Ul(x,j));
+        return 3.0*Pi*dl(j)*m_visc[j]*(V(x,j)-Ul(j));
     }
 
     doublereal fz(const doublereal* x, size_t j) {
@@ -738,6 +761,47 @@ protected:
 
     // Ideal gas constant
     doublereal R_u = 8.314; // J/mol/K
+
+    // Underlying spray phase
+    SprayPhase* m_SprayPhase;
+
+};
+
+class SprayPhase : public Sim1D {
+
+public:
+    SprayPhase();
+
+    virtual void eval;
+   
+    virtual void advance;
+
+    virtual void advance_to_convergence;
+
+    virtual void match_grids;
+
+    virtual void check_point_vapor;
+
+    virtual bool check_grid_vapor;
+
+    virtual void mdotVec(x,j);
+
+    virtual void mdot(x,j);
+
+    virtual void q(x,j);
+
+    // Throw error if too small 
+    virtual void reduce_timestep;
+
+    virtual void reset_timestep; 
+   
+    virtual void compute_grid_source;
+
+    virtual void nl(x,j);
+ 
+private:
+    SprayFlame* m_SprayFlame;
+    
 
 };
 
