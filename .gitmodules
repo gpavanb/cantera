@@ -10,3 +10,6 @@
 [submodule "ext/eigen"]
 	path = ext/eigen
 	url = https://github.com/Cantera/eigen-mirror.git
+[submodule "ext/alcon"]
+	path = ext/alcon
+	url = https://github.com/gpavanb/alcon.git

@@ -180,6 +180,25 @@ public:
         std::copy(soln, soln + m_x.size(), m_x.data());
     }
 
+   size_t systemSize() const {
+        return m_x.size();
+   }
+   
+   void bound_residue(double* x, double* a0, double* rhs) {
+     // Copy new solution to flame
+     this->setSolution(x);
+
+     // Evaluate residual
+     this->getResidual(0.0, rhs);
+   }
+
+   typedef void (Sim1D::*fptr)(double*, double*, double*);
+
+   fptr bound_residue_fcn() {
+       fptr MyFPtr = &Sim1D::bound_residue;
+       return MyFPtr;
+   }
+
     const doublereal* solution() const {
         return m_x.data();
     }
