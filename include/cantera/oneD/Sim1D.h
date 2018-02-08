@@ -185,12 +185,12 @@ public:
    }
 
    // TODO : Update boundary conditions for each a0   
-   void bound_residue(double* x, double* a0, double* rhs) {
+   void bound_residue(int* nvar,double* fpar,int* ipar,double* x,double* f) {
      // Copy new solution to flame
      this->setSolution(x);
 
      // Evaluate residual
-     this->getResidual(0.0, rhs);
+     this->getResidual(0.0, f);
    }
 
     const doublereal* solution() const {

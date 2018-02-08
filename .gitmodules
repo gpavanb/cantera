@@ -13,3 +13,6 @@
 [submodule "ext/alcon"]
 	path = ext/alcon
 	url = https://github.com/gpavanb/alcon.git
+[submodule "ext/pitcon7"]
+	path = ext/pitcon7
+	url = https://github.com/gpavanb/pitcon.git
