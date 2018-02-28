@@ -184,14 +184,62 @@ public:
         return m_x.size();
    }
 
-   // TODO : Update boundary conditions for each a0   
-   void bound_residue(int* nvar,double* fpar,int* ipar,double* x,double* f) {
-     // Copy new solution to flame
-     this->setSolution(x);
-
-     // Evaluate residual
-     this->getResidual(0.0, f);
+   void updateBounds() { 
+     Domain1D& dom = domain(1);
+     size_t nv = dom.nComponents();
+     size_t np = dom.nPoints();
+     lb.resize(nv*np);
+     ub.resize(nv*np);
+     for (size_t j = 0; j < np; j++) {
+       for (size_t i = 0; i < nv; i++) {
+         lb[j*nv + i] = dom.lowerBound(i);
+         ub[j*nv + i] = dom.upperBound(i);
+       }
+     }
    }
+   
+   // TODO : Update boundary conditions for each a0
+   void unbound_residue(int* nvar,double* fpar,int* ipar,double* x,double* f) {
+     // Copy new solution to flame
+     setSolution(x);
+
+     // Evaluate residual using border
+     getResidual(0.0, f);
+   }
+
+   // TODO : Update boundary conditions for each a0
+   void bound_residue(int* nvar,double* fpar,int* ipar,double* x,double* f) {
+     std::vector<double> xBorder(*nvar);
+     double excess = 0.0;
+     // Modify residual with bounds
+     for (int i = 0; i < *nvar; i++) {
+       if (x[i] < lb[i]) { 
+         xBorder[i] = lb[i];
+         excess += lb[i] - x[i];
+       }
+       else if (x[i] > ub[i]) {
+         xBorder[i] = ub[i];
+         excess += x[i] - ub[i];
+       }
+       else
+         xBorder[i] = x[i];
+     }    
+ 
+     // Copy new solution to flame
+     setSolution(xBorder.data());
+     // Evaluate residual using border
+     getResidual(0.0, f);
+
+     double minIncr = 1e-3;
+     // Perturbation to prevent roots outside constrained region
+     double perturb = minIncr;
+     for (int i = 0; i < *nvar; i++) {
+       perturb = f[i] > 0.0 ? minIncr : -minIncr;
+       // Steepness of continuation set to border value
+       f[i] = f[i] + (f[i] + perturb) * excess;
+     }
+
+    }
 
     const doublereal* solution() const {
         return m_x.data();
@@ -252,6 +300,9 @@ protected:
 
     //! User-supplied function called after a successful steady-state solve.
     Func1* m_steady_callback;
+
+    // Lower and upper bounds - required for continuation
+    std::vector<double> lb, ub;
 
 private:
     /// Calls method _finalize in each domain.
