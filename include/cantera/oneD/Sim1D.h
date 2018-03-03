@@ -188,14 +188,26 @@ public:
      Domain1D& dom = domain(1);
      size_t nv = dom.nComponents();
      size_t np = dom.nPoints();
-     lb.resize(nv*np);
-     ub.resize(nv*np);
+     // The last element is for the continuation parameter
+     // Defaults to strain rate
+     lb.resize(nv*np + 1);
+     ub.resize(nv*np + 1);
      for (size_t j = 0; j < np; j++) {
        for (size_t i = 0; i < nv; i++) {
          lb[j*nv + i] = dom.lowerBound(i);
          ub[j*nv + i] = dom.upperBound(i);
        }
      }
+     lb[nv*np] = 0.0;
+     ub[nv*np] = 1e10;
+   }
+
+   double* lowerBound() {
+     return lb.data();
+   }
+
+   double* upperBound() {
+     return ub.data();
    }
    
    // TODO : Update boundary conditions for each a0
