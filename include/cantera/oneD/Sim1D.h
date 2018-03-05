@@ -9,6 +9,7 @@
 #define CT_SIM1D_H
 
 #include "OneDim.h"
+#include "Inlet1D.h"
 
 namespace Cantera
 {
@@ -209,11 +210,85 @@ public:
    double* upperBound() {
      return ub.data();
    }
+
+   double StrainRate() {
+     return m_chi;
+   }
+  
+   double inletVelocity() {
+     return m_uin_f;
+   }
+
+   double fuelDensity() {
+     return m_rhoin_f;
+   }
+
+   double oxidizerDensity() {
+     return m_rhoin_o;
+   }
+
+   void setStrainRateValue(double a1) {
+     m_chi = a1;
+   }
+
+   void setInletVelocity(double uin_f) {
+     m_uin_f = uin_f;
+   }
+
+   void setFuelDensity(double rhoin_f) {
+     m_rhoin_f = rhoin_f;
+   }
+
+   void setOxidizerDensity(double rhoin_o) {
+     m_rhoin_o = rhoin_o;
+   }
+   
+   void setStretchThreshold(double a) {
+     m_stretch_threshold = a;
+   }
+
+   void setStrainRate(double a1) {
+     if (abs(m_chi-a1) > m_stretch_threshold) {
+       std::cout << "Grid stretch-u" << std::endl;
+       std::cout << "Original Chi: " << m_chi << " New Chi: " << a1 << std::endl; 
+       Domain1D& flow = domain(1);
+       Inlet1D& inlet_f = static_cast<Inlet1D&>(domain(0));
+       Inlet1D& inlet_o = static_cast<Inlet1D&>(domain(2));
+       
+       double lz = flow.zmax();
+       // TODO : Store u and rho separately in class
+       double uin_f = m_uin_f; 
+       double rhoin_f = m_rhoin_f;
+       double rhoin_o = m_rhoin_o;
+
+       // Modify boundary conditions
+       // Scale entire grid to get desired strain rate
+       doublereal lz0 = lz;
+       lz = uin_f / (a1 / (1.0 + std::sqrt(rhoin_f / rhoin_o))) / 2.0;
+       std::cout << "Original L: " << lz0 << " New L: " << lz << std::endl;
+       std::cout << rhoin_f << " " << rhoin_o << std::endl; 
+       double uin_o = a1 * lz / (1.0 + std::sqrt(rhoin_o / rhoin_f)) * 2.0; // m/s
+       for (auto it = flow.grid().begin(); it != flow.grid().end(); ++it)
+            *it *= (lz/lz0); 
+       
+       // update the boundary condition
+       double mdot_f = rhoin_f * uin_f;
+       inlet_f.setMdot(mdot_f);
+       double mdot_o = rhoin_o * uin_o;
+       inlet_o.setMdot(mdot_o);
+
+     }
+
+       m_chi = a1;
+   }
    
    // TODO : Update boundary conditions for each a0
    void unbound_residue(int* nvar,double* fpar,int* ipar,double* x,double* f) {
      // Copy new solution to flame
      setSolution(x);
+
+     // Set strain rate
+     setStrainRate(x[*nvar-1]);
 
      // Evaluate residual using border
      getResidual(0.0, f);
@@ -312,6 +387,15 @@ protected:
 
     //! User-supplied function called after a successful steady-state solve.
     Func1* m_steady_callback;
+
+    // Strain rate
+    double m_chi;
+
+    // Counterflow boundary conditions
+    double m_uin_f, m_rhoin_f, m_rhoin_o;
+
+    // Stretch Threshold
+    double m_stretch_threshold;
 
     // Lower and upper bounds - required for continuation
     std::vector<double> lb, ub;
