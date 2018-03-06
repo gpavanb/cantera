@@ -10,6 +10,7 @@
 
 #include "OneDim.h"
 #include "Inlet1D.h"
+#include <cmath> // for std::abs
 
 namespace Cantera
 {
@@ -214,25 +215,17 @@ public:
    double StrainRate() {
      return m_chi;
    }
-  
-   double inletVelocity() {
-     return m_uin_f;
-   }
-
-   double fuelDensity() {
-     return m_rhoin_f;
-   }
-
-   double oxidizerDensity() {
-     return m_rhoin_o;
-   }
 
    void setStrainRateValue(double a1) {
      m_chi = a1;
    }
 
-   void setInletVelocity(double uin_f) {
+   void setFuelVelocity(double uin_f) {
      m_uin_f = uin_f;
+   }
+
+   void setOxidizerVelocity(double uin_o) { 
+     m_uin_o = uin_o;
    }
 
    void setFuelDensity(double rhoin_f) {
@@ -243,41 +236,45 @@ public:
      m_rhoin_o = rhoin_o;
    }
    
-   void setStretchThreshold(double a) {
-     m_stretch_threshold = a;
+   void setAmplifyThreshold(double a) {
+     m_amplify_threshold = a;
    }
 
-   void setStrainRate(double a1) {
-     if (abs(m_chi-a1) > m_stretch_threshold) {
-       std::cout << "Grid stretch-u" << std::endl;
+   void setStrainRate(int nvar, double* x) {
+       double a1 = x[nvar-1];
+       
+       if (std::abs(m_chi - a1) > m_amplify_threshold) {
        std::cout << "Original Chi: " << m_chi << " New Chi: " << a1 << std::endl; 
        Domain1D& flow = domain(1);
        Inlet1D& inlet_f = static_cast<Inlet1D&>(domain(0));
        Inlet1D& inlet_o = static_cast<Inlet1D&>(domain(2));
-       
-       double lz = flow.zmax();
-       // TODO : Store u and rho separately in class
-       double uin_f = m_uin_f; 
+      
+       double ratio = a1/m_chi;
+ 
+       // Amplify velocities
+       size_t u_index = flow.componentIndex("u");
+       size_t V_index = flow.componentIndex("V");
+       size_t nPoints = flow.nPoints();
+       for (size_t i = 0; i < nPoints; i++) {
+         double u_loc = value(1,u_index,i);
+         setValue(1,u_index,i,u_loc*ratio);
+         double V_loc = value(1,V_index,i);
+         setValue(1,V_index,i,V_loc*ratio);
+       }
+
+       double uin_f = m_uin_f;
+       double uin_o = m_uin_o;
        double rhoin_f = m_rhoin_f;
        double rhoin_o = m_rhoin_o;
-
-       // Modify boundary conditions
-       // Scale entire grid to get desired strain rate
-       doublereal lz0 = lz;
-       lz = uin_f / (a1 / (1.0 + std::sqrt(rhoin_f / rhoin_o))) / 2.0;
-       std::cout << "Original L: " << lz0 << " New L: " << lz << std::endl;
-       std::cout << rhoin_f << " " << rhoin_o << std::endl; 
-       double uin_o = a1 * lz / (1.0 + std::sqrt(rhoin_o / rhoin_f)) * 2.0; // m/s
-       for (auto it = flow.grid().begin(); it != flow.grid().end(); ++it)
-            *it *= (lz/lz0); 
+       uin_f *= ratio;
+       uin_o *= ratio;
        
        // update the boundary condition
        double mdot_f = rhoin_f * uin_f;
        inlet_f.setMdot(mdot_f);
        double mdot_o = rhoin_o * uin_o;
        inlet_o.setMdot(mdot_o);
-
-     }
+       }
 
        m_chi = a1;
    }
@@ -288,7 +285,7 @@ public:
      setSolution(x);
 
      // Set strain rate
-     setStrainRate(x[*nvar-1]);
+     setStrainRate(*nvar,x);
 
      // Evaluate residual using border
      getResidual(0.0, f);
@@ -391,11 +388,11 @@ protected:
     // Strain rate
     double m_chi;
 
-    // Counterflow boundary conditions
-    double m_uin_f, m_rhoin_f, m_rhoin_o;
+    // Amplify velocity field for this change in threshol
+    double m_amplify_threshold;
 
-    // Stretch Threshold
-    double m_stretch_threshold;
+    // Counterflow boundary conditions
+    double m_uin_f, m_uin_o, m_rhoin_f, m_rhoin_o;
 
     // Lower and upper bounds - required for continuation
     std::vector<double> lb, ub;
