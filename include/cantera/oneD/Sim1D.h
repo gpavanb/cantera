@@ -235,15 +235,10 @@ public:
    void setOxidizerDensity(double rhoin_o) {
      m_rhoin_o = rhoin_o;
    }
-   
-   void setAmplifyThreshold(double a) {
-     m_amplify_threshold = a;
-   }
 
    void setStrainRate(int nvar, double* x) {
        double a1 = x[nvar-1];
        
-       if (std::abs(m_chi - a1) > m_amplify_threshold) {
        Domain1D& flow = domain(1);
        Inlet1D& inlet_f = static_cast<Inlet1D&>(domain(0));
        Inlet1D& inlet_o = static_cast<Inlet1D&>(domain(2));
@@ -261,19 +256,14 @@ public:
          setValue(1,V_index,i,V_loc*ratio);
        }
 
-       double uin_f = m_uin_f;
-       double uin_o = m_uin_o;
-       double rhoin_f = m_rhoin_f;
-       double rhoin_o = m_rhoin_o;
-       uin_f *= ratio;
-       uin_o *= ratio;
+       m_uin_f *= ratio;
+       m_uin_o *= ratio;
        
        // update the boundary condition
-       double mdot_f = rhoin_f * uin_f;
+       double mdot_f = m_rhoin_f * m_uin_f;
        inlet_f.setMdot(mdot_f);
-       double mdot_o = rhoin_o * uin_o;
+       double mdot_o = m_rhoin_o * m_uin_o;
        inlet_o.setMdot(mdot_o);
-       }
 
        m_chi = a1;
    }
@@ -386,9 +376,6 @@ protected:
 
     // Strain rate
     double m_chi;
-
-    // Amplify velocity field for this change in threshol
-    double m_amplify_threshold;
 
     // Counterflow boundary conditions
     double m_uin_f, m_uin_o, m_rhoin_f, m_rhoin_o;
