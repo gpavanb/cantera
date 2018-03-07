@@ -244,7 +244,6 @@ public:
        double a1 = x[nvar-1];
        
        if (std::abs(m_chi - a1) > m_amplify_threshold) {
-       std::cout << "Original Chi: " << m_chi << " New Chi: " << a1 << std::endl; 
        Domain1D& flow = domain(1);
        Inlet1D& inlet_f = static_cast<Inlet1D&>(domain(0));
        Inlet1D& inlet_o = static_cast<Inlet1D&>(domain(2));
