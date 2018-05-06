@@ -136,6 +136,8 @@ public:
      */
     doublereal ssnorm(doublereal* x, doublereal* r);
 
+    doublereal diffnorm(doublereal* x1, doublereal* x2);
+
     /// Reciprocal of the time step.
     doublereal rdt() const {
         return m_rdt;
@@ -352,6 +354,9 @@ protected:
 
     //! Maximum number of timesteps allowed per call to solve()
     int m_nsteps_max;
+
+    // Convergence criterion - calculate norm between timesteps
+    doublereal m_change;
 
 private:
     // statistics

@@ -299,6 +299,16 @@ void OneDim::eval(size_t j, double* x, double* r, doublereal rdt, int count)
     }
 }
 
+doublereal OneDim::diffnorm(doublereal* x1, doublereal* x2) {
+    doublereal ss = 0.0;
+    for (size_t i = 0; i < m_size; i++) {
+        doublereal diff = fabs(x2[i] - x1[i]);
+        doublereal denom = std::numeric_limits<double>::min() + std::max(fabs(x1[i]),fabs(x2[i]));
+        ss = std::max(diff/denom,ss);
+    }
+    return ss;
+} 
+
 doublereal OneDim::ssnorm(doublereal* x, doublereal* r)
 {
     eval(npos, x, r, 0.0, 0);
@@ -380,6 +390,11 @@ doublereal OneDim::timeStep(int nsteps, doublereal dt, doublereal* x,
 
         // solve the transient problem
         int m = solve(x, r, loglevel-1);
+        vector_fp diff(m_size);
+        // compute step
+        for (size_t l = 0; l < m_size; l++)
+          diff[l] = r[l]-x[l];
+        m_change = m_newt->norm2(x,diff.data(),*this);
 
         // successful time step. Copy the new solution in r to
         // the current solution in x.

@@ -113,6 +113,10 @@ public:
         return m_x.data();
     }
 
+    vector_fp& solutionVector() {
+      return m_x;
+    }
+
     void setTimeStep(double stepsize, size_t n, const int* tsteps);
 
     void solve(int loglevel = 0, bool refine_grid = true);
@@ -128,6 +132,9 @@ public:
 
     /// Refine the grid in all domains.
     int refine(int loglevel=0);
+
+    // Refine the grid and sync with another instance
+    int refine_and_sync(int loglevel, Sim1D& other);
 
     //! Add node for fixed temperature point of freely propagating flame
     int setFixedTemperature(doublereal t);
@@ -177,7 +184,7 @@ public:
 
     void getInitialSoln();
 
-    doublereal steady_norm();
+    doublereal diff_norm();
 
     doublereal take_step(int loglevel, int nsteps, doublereal dt);
 
