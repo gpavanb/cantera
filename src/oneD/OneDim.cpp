@@ -36,7 +36,7 @@ OneDim::OneDim(vector<Domain1D*> domains) :
     m_init(false), m_solve_time(0.0),
     m_ss_jac_age(20), m_ts_jac_age(20),
     m_interrupt(0), m_time_step_callback(0),
-    m_nsteps(0), m_nsteps_max(500),
+    m_nsteps(0), m_nsteps_max(5000),
     m_nevals(0), m_evaltime(0.0)
 {
     // create a Newton iterator, and add each domain.

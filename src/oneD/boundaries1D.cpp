@@ -830,12 +830,6 @@ void SprayInlet1D::eval(size_t jg, doublereal* xg, doublereal* rg,
     // Rescaled nl equation
     rb[c_offset_nl] -= 1.0;
 
-    // spreading rate. The flow domain sets this to V(0),
-    // so for finite spreading rate subtract m_V0.
-    rb[c_offset_Ul] -= m_Ul0;
-
-    rb[c_offset_vl] -= m_vl0;
-
     // The third flow residual is for T, where it is set to T(0).  Subtract
     // the local temperature to hold the flow T to the inlet T.
     rb[c_offset_Tl] -= m_Tl0;
@@ -857,8 +851,6 @@ XML_Node& SprayInlet1D::save(XML_Node& o, const doublereal* const soln)
     XML_Node& inlt = Domain1D::save(o, soln);
     XML_Node& gv = inlt.addChild("spray_inlet");
 
-    addFloat(gv, "Ul", soln[c_offset_Ul]);
-    addFloat(gv, "vl", soln[c_offset_vl]);
     addFloat(gv, "Tl", soln[c_offset_Tl]);
     addFloat(gv, "ml", soln[c_offset_ml]);
     addFloat(gv, "nl", soln[c_offset_nl]);
@@ -914,14 +906,10 @@ void SprayOutlet1D::eval(size_t jg, doublereal* xg, doublereal* rg, integer* dia
         double* rb = r;
         int* db = diag;
 
-        rb[c_offset_Ul] = xb[c_offset_Ul] - xb[c_offset_Ul + nc];
-        rb[c_offset_vl] = xb[c_offset_vl] - xb[c_offset_vl + nc];
         rb[c_offset_Tl] = xb[c_offset_Tl] - xb[c_offset_Tl + nc];
         rb[c_offset_ml] = xb[c_offset_ml] - xb[c_offset_ml + nc];
         rb[c_offset_nl] = xb[c_offset_nl] - xb[c_offset_nl + nc];
 
-        db[c_offset_Ul] = 0;
-        db[c_offset_vl] = 0; 
         db[c_offset_Tl] = 0;
         db[c_offset_ml] = 0;
         db[c_offset_nl] = 0;
@@ -935,14 +923,10 @@ void SprayOutlet1D::eval(size_t jg, doublereal* xg, doublereal* rg, integer* dia
         double* rb = r - nc;
         int* db = diag - nc;
 
-        rb[c_offset_Ul] = xb[c_offset_Ul] - xb[c_offset_Ul - nc];
-        rb[c_offset_vl] = xb[c_offset_vl] - xb[c_offset_vl - nc];
         rb[c_offset_Tl] = xb[c_offset_Tl] - xb[c_offset_Tl - nc];
         rb[c_offset_ml] = xb[c_offset_ml] - xb[c_offset_ml - nc];
         rb[c_offset_nl] = xb[c_offset_nl] - xb[c_offset_nl - nc];
 
-        db[c_offset_Ul] = 0;
-        db[c_offset_vl] = 0; 
         db[c_offset_Tl] = 0;
         db[c_offset_ml] = 0;
         db[c_offset_nl] = 0;
@@ -955,8 +939,6 @@ XML_Node& SprayOutlet1D::save(XML_Node& o, const doublereal* const soln)
     XML_Node& inlt = Domain1D::save(o, soln);
     XML_Node& gv = inlt.addChild("spray_outlet");
 
-    addFloat(gv, "Ul", soln[c_offset_Ul]);
-    addFloat(gv, "vl", soln[c_offset_vl]);
     addFloat(gv, "Tl", soln[c_offset_Tl]);
     addFloat(gv, "ml", soln[c_offset_ml]);
     addFloat(gv, "nl", soln[c_offset_nl]);

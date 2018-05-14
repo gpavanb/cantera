@@ -342,13 +342,13 @@ void StFlow::eval(size_t jg, doublereal* xg,
 
         if (j == 0) {
             // these may be modified by a boundary object
-
             // Continuity. This propagates information right-to-left, since
             // rho_u at point 0 is dependent on rho_u at point 1, but not on
             // mdot from the inlet.
             rsd[index(c_offset_U,0)] =
                 -(rho_u(x,1) - rho_u(x,0))/m_dz[0]
                 -(density(1)*V(x,1) + density(0)*V(x,0));
+
 
             // the inlet (or other) object connected to this one will modify
             // these equations by subtracting its values for V, T, and mdot. As
@@ -898,6 +898,7 @@ void AxiStagnFlow::evalContinuity(size_t j, doublereal* x, doublereal* rsd,
 
     //algebraic constraint
     diag[index(c_offset_U, j)] = 0;
+
 }
 
 FreeFlame::FreeFlame(IdealGasPhase* ph, size_t nsp, size_t points) :
@@ -1010,8 +1011,6 @@ XML_Node& FreeFlame::save(XML_Node& o, const doublereal* const sol)
 void SprayLiquid::_getInitialSoln(double* x)
 {
     for (size_t j = 0; j < m_points; j++) {
-        Ul(x,j) = 0;
-        vl(x,j) = 0;
         Tl(x,j) = 300.0;
         ml(x,j) = 0;
         nl(x,j) = 0;
@@ -1023,8 +1022,6 @@ SprayLiquid::SprayLiquid()
     m_nv = c_offset_nl+1;
     Domain1D::resize(m_nv,1);
 
-    setBounds(c_offset_Ul, -1e20, 1e20); // no bounds on Ul
-    setBounds(c_offset_vl, -1e20, 1e20); // no bounds on vl
     setBounds(c_offset_Tl, 200.0, 5000.0); // bounds on Tl
     setBounds(c_offset_ml, -1e-7, 1.1); // bounds on ml
     setBounds(c_offset_nl, -1e-7, 1e20); // positivity for nl
@@ -1094,13 +1091,9 @@ void SprayLiquid::eval(size_t jg, doublereal* xg,
             // these equations by subtracting its values for V, T, and mdot. As
             // a result, these residual equations will force the solution
             // variables to the values for the boundary object
-            rsd[index(c_offset_vl,0)] = vl(x,0);
-            rsd[index(c_offset_Ul,0)] = Ul(x,0);
             rsd[index(c_offset_Tl,0)] = Tl(x,0);
             rsd[index(c_offset_ml,0)] = ml(x,0);
 
-            diag[index(c_offset_Ul, 0)] = 0;
-            diag[index(c_offset_vl, 0)] = 0;
             diag[index(c_offset_Tl, 0)] = 0;
             diag[index(c_offset_ml, 0)] = 0;
 
@@ -1122,31 +1115,6 @@ void SprayLiquid::eval(size_t jg, doublereal* xg,
                 rdt * (ml(x,j) - ml_prev(j)) - mdot(x,j)/m_ml0 + av_ml(x,j);
             diag[index(c_offset_ml, j)] = 1;
 
-            //------------------------------------------------
-            //    Radial momentum equation
-            //
-            //    m_l dU_l/dt + m_l v_l dU_l/dz + m_l U_l^2
-            //       = f_r/r
-            //-------------------------------------------------
-            rsd[index(c_offset_Ul,j)] = -vl(x,j) * dUldz(x,j) -
-                Ul(x,j)*Ul(x,j) - rdt*(Ul(x,j)-Ul_prev(j)) + av_Ul(x,j);
-            if (ml_act(x,j)> cutoff) {
-                rsd[index(c_offset_Ul,j)] += Fr(x,j)/ml_act(x,j);
-            }
-            diag[index(c_offset_Ul, j)] = 1;
-
-            //------------------------------------------------
-            //    Axial momentum equation
-            //
-            //    m_l dv_l/dt + m_l v_l dv_l/dz = f_z
-            //-------------------------------------------------
-            rsd[index(c_offset_vl,j)] = -vl(x,j)*dvldz(x,j) - 
-                    rdt*(vl(x,j)-vl_prev(j)) + av_vl(x,j);
-            if (ml_act(x,j)>cutoff) {
-                rsd[index(c_offset_vl,j)] += fz(x,j)/ml_act(x,j);
-            }
-            diag[index(c_offset_vl, j)] = 1;
-
             //-----------------------------------------------
             //    energy equation
             //
@@ -1155,10 +1123,10 @@ void SprayLiquid::eval(size_t jg, doublereal* xg,
             //-----------------------------------------------
             rsd[index(c_offset_Tl,j)] = -vl(x,j)*dTldz(x,j) - 
                     rdt * (Tl(x,j) - Tl_prev(j)) + av_Tl(x,j);
-            if (ml_act(x,j)>cutoff) {
-                rsd[index(c_offset_Tl,j)] += 
-                    mdot(x,j)*(q(x,j)-Lv()) / ml_act(x,j) / cpl(x,j);
-            }
+            //if (ml_act(x,j)>cutoff) {
+            //    rsd[index(c_offset_Tl,j)] += 
+            //        mdot(x,j)*(q(x,j)-Lv()) / ml_act(x,j) / cpl(x,j);
+            //}
             diag[index(c_offset_Tl, j)] = 1;
         }
     }
@@ -1199,12 +1167,8 @@ void SprayLiquid::evalRightBoundaryLiquid(doublereal* x, doublereal* rsd,
     diag[index(c_offset_nl, j)] = 0;
 
     // Neumann boundary condition for Ul, vl, Tl and ml
-    rsd[index(c_offset_Ul,j)] = Ul(x,j) - Ul(x,j-1);
-    rsd[index(c_offset_vl,j)] = vl(x,j) - vl(x,j-1);
     rsd[index(c_offset_Tl,j)] = Tl(x,j) - Tl(x,j-1);
     rsd[index(c_offset_ml,j)] = ml(x,j) - ml(x,j-1);
-    diag[index(c_offset_Ul, j)] = 0;
-    diag[index(c_offset_vl, j)] = 0;
     diag[index(c_offset_Tl, j)] = 0;
     diag[index(c_offset_ml, j)] = 0;
 }
@@ -1213,14 +1177,10 @@ string SprayLiquid::componentName(size_t n) const
 {
     switch (n) {
     case 0:
-        return "Ul";
-    case 1:
-        return "vl";
-    case 2:
         return "Tl";
-    case 3:
+    case 1:
         return "ml";
-    case 4:
+    case 2:
         return "nl";
     default:
         return "<unknown>";
@@ -1230,11 +1190,7 @@ string SprayLiquid::componentName(size_t n) const
 // TODO : Liquid mass fractions
 size_t SprayLiquid::componentIndex(const std::string& name) const
 {
-    if (name=="Ul") 
-      return c_offset_Ul;
-    else if (name=="vl") 
-      return c_offset_vl;
-    else if (name=="Tl") 
+    if (name=="Tl") 
       return c_offset_Tl;
     else if (name=="ml") 
       return c_offset_ml;
@@ -1258,12 +1214,6 @@ XML_Node& SprayLiquid::save(XML_Node& o, const doublereal* const sol)
    
     XML_Node& gv = flow.addChild("liq_grid_data");
     vector_fp x(soln.nColumns());
-
-    soln.getRow(componentIndex("Ul"), x.data());
-    addFloatArray(gv,"Ul",x.size(),x.data(),"m/s","liq. r velocity");
-
-    soln.getRow(componentIndex("vl"), x.data());
-    addFloatArray(gv,"vl",x.size(),x.data(),"m/s","liq. x velocity");
 
     soln.getRow(componentIndex("Tl"), x.data());
     addFloatArray(gv,"Tl",x.size(),x.data(),"K","liq. temperature");
@@ -1315,11 +1265,11 @@ SprayGas::SprayGas(IdealGasPhase* ph, size_t nsp, size_t points) :
     AxiStagnFlow(ph, nsp, points) {} 
 
 doublereal SprayGas::Fr(const doublereal* x, size_t j) {
-    return 3.0*Pi*m_liq->dl_prev(j)*m_visc[j]*(V(x,j)-m_liq->Ul_prev(j));
+    return 0.0;
 }
 
 doublereal SprayGas::fz(const doublereal* x, size_t j) {
-    return 3.0*Pi*m_liq->dl_prev(j)*m_visc[j]*(u(x,j)-m_liq->vl(x,j));
+    return 0.0;   
 }
 
 doublereal SprayGas::Dgf(size_t j) {
@@ -1327,7 +1277,8 @@ doublereal SprayGas::Dgf(size_t j) {
 }
 
 doublereal SprayGas::cpgf(size_t j) {
-    return m_cp[j];
+    return 1300;
+    //return m_cp[j];
 }
 
 void SprayGas::updateFuelSpecies(const std::string fuel_name) {
@@ -1374,7 +1325,6 @@ void SprayGas::eval(size_t jg, doublereal* xg,
             continue;
 
         } else { // interior points
-
             //------------------------------------------------
             //    Coninuity equation
             //------------------------------------------------
@@ -1392,7 +1342,7 @@ void SprayGas::eval(size_t jg, doublereal* xg,
             //-------------------------------------------------
             if (m_liq->ml_prev(j)>cutoff) {
              rsd[index(c_offset_V,j)] -= m_liq->m_nl0*( m_liq->nl_prev(j) * Fr(x,j) / m_rho[j] );
-             rsd[index(c_offset_V,j)] += m_liq->m_nl0* 
+             rsd[index(c_offset_V,j)] += m_liq->m_nl0*
                 (m_liq->nl_prev(j) * m_liq->mdot(j) * (m_liq->Ul_prev(j)-V(x,j)) - m_liq->nl_prev(j) * Fr(x,j)) / m_rho[j];
             }
             //-------------------------------------------------

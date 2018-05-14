@@ -27,11 +27,11 @@ const size_t c_offset_L = 3; // (1/r)dP/dr
 const size_t c_offset_Y = 4; // mass fractions
 
 // Parameters used in spray liquid
-const size_t c_offset_Ul = 0; // liquid radial velocity 
-const size_t c_offset_vl = 1; // liquid axial velocity
-const size_t c_offset_Tl = 2; // liquid temperature
-const size_t c_offset_ml = 3; // droplet mass
-const size_t c_offset_nl = 4; // number density
+//const size_t c_offset_Ul = 0; // liquid radial velocity 
+//const size_t c_offset_vl = 1; // liquid axial velocity
+const size_t c_offset_Tl = 0; // liquid temperature
+const size_t c_offset_ml = 1; // droplet mass
+const size_t c_offset_nl = 2; // number density
 const doublereal mmHg2Pa = 133.322365;
 const doublereal bar2Pa  = 1.0e+05;
 const doublereal cutoff = 1.0e-16;
@@ -243,6 +243,14 @@ public:
         return m_kExcessRight;
     }
 
+    void setStrain(doublereal a_) {
+      m_a = a_;
+    }
+
+    void setLength(doublereal L_) { 
+      m_L = L_;
+    }
+
 protected:
     doublereal wdot(size_t k, size_t j) const {
         return m_wdot(k,j);
@@ -435,6 +443,12 @@ protected:
     //! to `j1`, based on solution `x`.
     void updateTransport(doublereal* x, size_t j0, size_t j1);
 
+    // Strain rate 
+    doublereal m_a;
+
+    // Domain length
+    doublereal m_L; 
+
 private:
     vector_fp m_ybar;
 
@@ -518,6 +532,10 @@ public:
     void updateFuelSpecies(const std::string fuel_name);
 
     bool check_for_liquid_step();
+
+    doublereal fuel_fraction(size_t j) {
+      return Y_prev(c_offset_fuel,j);
+    }
 protected:
     std::vector<bool> get_equilibrium_status();
 
@@ -615,6 +633,10 @@ public:
         m_cpl = cpl_;
     }
 
+    void setLiquidLv(const doublereal Lv_) {
+        m_Lv = Lv_;
+    }
+
     void setGasDomain(SprayGas* gas);
 
     void setAVCoefficients(const std::vector<doublereal>& m_visc) {
@@ -642,27 +664,15 @@ protected:
     }
 
     doublereal vl(const doublereal* x, size_t j) const {
-        return x[index(c_offset_vl,j)];
-    }
-
-    doublereal& vl(doublereal* x, size_t j) const {
-        return x[index(c_offset_vl,j)];
-    }
-
-    doublereal vl_prev(size_t j) const {
-        return prevSoln(c_offset_vl, j);
+        return m_gas->u_prev(j); // x[index(c_offset_vl,j)];
     }
 
     doublereal Ul(const doublereal* x, size_t j) const {
-        return x[index(c_offset_Ul,j)];
-    }
-
-    doublereal& Ul(doublereal* x, size_t j) const {
-        return x[index(c_offset_Ul,j)];
+        return m_gas->V_prev(j); //x[index(c_offset_Ul,j)];
     }
 
     doublereal Ul_prev(size_t j) const {
-        return prevSoln(c_offset_Ul, j);
+        return m_gas->V_prev(j); //x[index(c_offset_Ul,j)];
     }
 
     doublereal ml(const doublereal* x, size_t j) const {
@@ -736,16 +746,20 @@ protected:
     doublereal prs(doublereal T) {
       // Antoine Equation
       // (Elliott, Lira, Introductory Chemical Engineering Thermodynamics, 2012)
-      return std::pow(10.0,m_prs_A-m_prs_B/(m_prs_C+T)) * mmHg2Pa;
+      return std::pow(10.0,m_prs_A-m_prs_B/(m_prs_C+T)) * m_cvt;
     }
 
     doublereal prs(const doublereal* x, size_t j) {
       return prs((1/3)*m_gas->T_prev(j) + (2/3)*Tl(x,j));
     }
 
+    //doublereal Lv() {
+    //    // Clausius-Clapeyron equation
+    //    return m_prs_B*GasConstant/m_gas->m_wt[m_gas->c_offset_fuel];
+    //}
+    
     doublereal Lv() {
-        // Clausius-Clapeyron equation
-        return m_prs_B*GasConstant/m_gas->m_wt[m_gas->c_offset_fuel];
+       return m_Lv;
     }
 
     doublereal cpl(const doublereal* x, size_t j) {
@@ -769,10 +783,16 @@ protected:
         return Yrs;
     }
 
+    //doublereal mdot(const doublereal* x, size_t j) {
+    //    doublereal Yrs_ = Yrs(x,j);
+    //    doublereal Bm = (Yrs_- m_gas->Y_prev(m_gas->c_offset_fuel,j)) / 
+    //        std::max(1.0-Yrs_,std::sqrt(std::numeric_limits<double>::min()));
+    //    doublereal mdot_ = 2.0*Pi*dl(x,j)*m_gas->m_rho[j]*m_gas->Dgf(j)*std::log(1.0+Bm);
+    //    return mdot_;
+    //}
+
     doublereal mdot(const doublereal* x, size_t j) {
-        doublereal Yrs_ = Yrs(x,j);
-        doublereal Bm = (Yrs_- m_gas->Y_prev(m_gas->c_offset_fuel,j)) / 
-            std::max(1.0-Yrs_,std::sqrt(std::numeric_limits<double>::min()));
+        doublereal Bm = std::max((m_gas->cpgf(j)/Lv())*(m_gas->T_prev(j)-Tl(x,j)),0.0);
         doublereal mdot_ = 2.0*Pi*dl(x,j)*m_gas->m_rho[j]*m_gas->Dgf(j)*std::log(1.0+Bm);
         return mdot_;
     }
@@ -781,13 +801,17 @@ protected:
        return mdot(prevSolnPtr(), j);
     }
 
-    doublereal q(const doublereal* x,size_t j) {
-        if (mdot(x,j)<= cutoff) {
-            return 0.0;
-        } else {
-            doublereal BT = std::exp(mdot(x,j)/(2.0*Pi*m_gas->m_rho[j]*m_gas->Dgf(j)*dl(x,j)))-1.0;
-            return m_gas->cpgf(j)*(m_gas->T_prev(j)-Tl(x,j))/BT;
-        }
+    //doublereal q(const doublereal* x,size_t j) {
+    //    if (mdot(x,j)<= cutoff) {
+    //        return 0.0;
+    //    } else {
+    //        doublereal BT = std::exp(mdot(x,j)/(2.0*Pi*m_gas->m_rho[j]*m_gas->Dgf(j)*dl(x,j)))-1.0;
+    //        return m_gas->cpgf(j)*(m_gas->T_prev(j)-Tl(x,j))/BT;
+    //    }
+    //}
+    
+    doublereal q(const doublereal* x, size_t j) {
+        return m_Lv;
     }
 
     doublereal q(size_t j) {
@@ -795,11 +819,11 @@ protected:
     }
 
     doublereal Fr(const doublereal* x, size_t j) {
-        return 3.0*Pi*dl(x,j)*m_gas->m_visc[j]*(m_gas->V_prev(j)-Ul(x,j));
+        return 0.0; 
     }
 
     doublereal fz(const doublereal* x, size_t j) {
-        return 3.0*Pi*dl(x,j)*m_gas->m_visc[j]*(m_gas->u_prev(j)-vl(x,j));
+        return 0.0;
     }
 
     //! @}
@@ -878,6 +902,8 @@ protected:
     doublereal m_ml0;
     // Store initial number density for scaling
     doublereal m_nl0;
+    // Latent heat
+    doublereal m_Lv;
     // grid parameters
     vector_fp m_dz;
     // AV coefficients
