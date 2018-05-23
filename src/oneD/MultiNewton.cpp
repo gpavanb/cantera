@@ -109,6 +109,11 @@ doublereal norm_square(const doublereal* x,
 
     for (size_t n = 0; n < nv; n++) {
         double esum = 0.0;
+
+        string name = r.componentName(n);
+        // Skip norm based on velocities
+        if (name == "u" || name == "V" || name == "lambda")
+          continue;
         for (size_t j = 0; j < np; j++) {
             esum += fabs(x[nv*j + n]);
         }

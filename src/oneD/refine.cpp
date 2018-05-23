@@ -79,6 +79,11 @@ int Refiner::analyze(size_t n, const doublereal* z,
     for (size_t i = 0; i < m_nv; i++) {
         if (m_active[i]) {
             string name = m_domain->componentName(i);
+           
+            // Skip refinement based on velocities
+            if (name == "u" || name == "V" || name == "lambda")
+              continue;
+
             // get component i at all points
             for (size_t j = 0; j < n; j++) {
                 v[j] = value(x, i, j);
