@@ -349,7 +349,6 @@ void StFlow::eval(size_t jg, doublereal* xg,
                 -(rho_u(x,1) - rho_u(x,0))/m_dz[0]
                 -(density(1)*V(x,1) + density(0)*V(x,0));
 
-
             // the inlet (or other) object connected to this one will modify
             // these equations by subtracting its values for V, T, and mdot. As
             // a result, these residual equations will force the solution
@@ -364,7 +363,7 @@ void StFlow::eval(size_t jg, doublereal* xg,
             for (size_t k = 0; k < m_nsp; k++) {
                 sum += Y(x,k,0);
                 rsd[index(c_offset_Y + k, 0)] =
-                    -(m_flux(k,0) + rho_u(x,0)* Y(x,k,0));
+                    -(m_flux(k,0) + rho_uf(x,0)* Y(x,k,0));
             }
             rsd[index(c_offset_Y + leftExcessSpecies(), 0)] = 1.0 - sum;
         } else if (j == m_points - 1) {
@@ -392,7 +391,7 @@ void StFlow::eval(size_t jg, doublereal* xg,
             //-------------------------------------------------
             getWdot(x,j);
             for (size_t k = 0; k < m_nsp; k++) {
-                double convec = rho_u(x,j)*dYdz(x,k,j);
+                double convec = rho_uf(x,j)*dYdz(x,k,j);
                 double diffus = 2.0*(m_flux(k,j) - m_flux(k,j-1))
                                 / (z(j+1) - z(j-1));
                 double wdot_;
@@ -430,7 +429,7 @@ void StFlow::eval(size_t jg, doublereal* xg,
                 double dtdzj = dTdz(x,j);
                 sum2 *= GasConstant * dtdzj;
 
-                rsd[index(c_offset_T, j)] = - m_cp[j]*rho_u(x,j)*dtdzj
+                rsd[index(c_offset_T, j)] = - m_cp[j]*rho_uf(x,j)*dtdzj
                                             - divHeatFlux(x,j) - sum - sum2;
                 rsd[index(c_offset_T, j)] /= (m_rho[j]*m_cp[j]);
                 rsd[index(c_offset_T, j)] -= rdt*(T(x,j) - T_prev(j));
@@ -874,7 +873,7 @@ void AxiStagnFlow::evalRightBoundary(doublereal* x, doublereal* rsd,
     doublereal sum = 0.0;
     for (size_t k = 0; k < m_nsp; k++) {
         sum += Y(x,k,j);
-        rsd[index(k+c_offset_Y,j)] = m_flux(k,j-1) + rho_u(x,j)*Y(x,k,j);
+        rsd[index(k+c_offset_Y,j)] = m_flux(k,j-1) + rho_uf(x,j)*Y(x,k,j);
     }
     rsd[index(c_offset_Y + rightExcessSpecies(), j)] = 1.0 - sum;
     diag[index(c_offset_Y + rightExcessSpecies(), j)] = 0;
@@ -1318,7 +1317,7 @@ void SprayGas::eval(size_t jg, doublereal* xg,
             // rho_u at point 0 is dependent on rho_u at point 1, but not on
             // mdot from the inlet.
             if (m_liq->ml_prev(j)>cutoff) {
-            rsd[index(c_offset_U,0)] += m_liq->m_nl0*(m_liq->nl_prev(0)*m_liq->mdot(0) + m_liq->nl_prev(1)*m_liq->mdot(1))/2.0;
+            //rsd[index(c_offset_U,0)] += m_liq->m_nl0*(m_liq->nl_prev(0)*m_liq->mdot(0) + m_liq->nl_prev(1)*m_liq->mdot(1))/2.0;
             }
 
         } else if (j == m_points - 1) {
@@ -1329,8 +1328,8 @@ void SprayGas::eval(size_t jg, doublereal* xg,
             //    Coninuity equation
             //------------------------------------------------
             if (m_liq->ml_prev(j)>cutoff) {
-            rsd[index(c_offset_U,j)] += m_liq->m_nl0*
-                                     (m_liq->nl_prev(j)*m_liq->mdot(j) + m_liq->nl_prev(j+1)*m_liq->mdot(j+1))/2.0;
+            //rsd[index(c_offset_U,j)] += m_liq->m_nl0*
+            //                         (m_liq->nl_prev(j)*m_liq->mdot(j) + m_liq->nl_prev(j+1)*m_liq->mdot(j+1))/2.0;
             }
 
             //------------------------------------------------
@@ -1341,9 +1340,9 @@ void SprayGas::eval(size_t jg, doublereal* xg,
             //         + nl mdot (Ul - Ug) - nl Fr
             //-------------------------------------------------
             if (m_liq->ml_prev(j)>cutoff) {
-             rsd[index(c_offset_V,j)] -= m_liq->m_nl0*( m_liq->nl_prev(j) * Fr(x,j) / m_rho[j] );
-             rsd[index(c_offset_V,j)] += m_liq->m_nl0*
-                (m_liq->nl_prev(j) * m_liq->mdot(j) * (m_liq->Ul_prev(j)-V(x,j)) - m_liq->nl_prev(j) * Fr(x,j)) / m_rho[j];
+             //rsd[index(c_offset_V,j)] -= m_liq->m_nl0*( m_liq->nl_prev(j) * Fr(x,j) / m_rho[j] );
+             //rsd[index(c_offset_V,j)] += m_liq->m_nl0*
+             //   (m_liq->nl_prev(j) * m_liq->mdot(j) * (m_liq->Ul_prev(j)-V(x,j)) - m_liq->nl_prev(j) * Fr(x,j)) / m_rho[j];
             }
             //-------------------------------------------------
             //    Species equations

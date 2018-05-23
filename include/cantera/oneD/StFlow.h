@@ -294,8 +294,16 @@ protected:
         return m_rho[j]*x[index(c_offset_U, j)];
     }
 
+    doublereal rho_uf(const doublereal* x, size_t j) const {
+        return m_rho[j]*uf(j);
+    }
+
     doublereal u(const doublereal* x, size_t j) const {
         return x[index(c_offset_U, j)];
+    }
+
+    doublereal uf(size_t j) const {
+        return m_a*(m_L/2.0 - z(j));
     }
 
     doublereal u_prev(size_t j) const {
@@ -305,6 +313,11 @@ protected:
     doublereal V(const doublereal* x, size_t j) const {
         return x[index(c_offset_V, j)];
     }
+
+    doublereal Vf(size_t j) const {
+        return m_a;
+    }
+
     doublereal V_prev(size_t j) const {
         return prevSoln(c_offset_V, j);
     }
@@ -664,15 +677,15 @@ protected:
     }
 
     doublereal vl(const doublereal* x, size_t j) const {
-        return m_gas->u_prev(j); // x[index(c_offset_vl,j)];
+        return m_gas->uf(j); // x[index(c_offset_vl,j)];
     }
 
     doublereal Ul(const doublereal* x, size_t j) const {
-        return m_gas->V_prev(j); //x[index(c_offset_Ul,j)];
+        return m_gas->Vf(j); //x[index(c_offset_Ul,j)];
     }
 
     doublereal Ul_prev(size_t j) const {
-        return m_gas->V_prev(j); //x[index(c_offset_Ul,j)];
+        return m_gas->Vf(j); //x[index(c_offset_Ul,j)];
     }
 
     doublereal ml(const doublereal* x, size_t j) const {
