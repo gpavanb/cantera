@@ -364,6 +364,18 @@ protected:
         size_t jloc = (u(x,j) > 0.0 ? j : j + 1);
         return (T(x,jloc) - T(x,jloc-1))/m_dz[jloc-1];
     }
+
+    doublereal d2Ydz2(const doublereal* x, size_t k, size_t j) const {
+        doublereal ret = m_dz[j-1]*Y(x,k,j+1) - (m_dz[j-1] + m_dz[j])*Y(x,k,j) + m_dz[j]*Y(x,k,j-1);
+        ret /= m_dz[j-1]*m_dz[j]*(0.5*(m_dz[j-1] + m_dz[j]));
+        return ret;
+    }
+
+    doublereal d2Tdz2(const doublereal* x, size_t j) const {
+        doublereal ret = m_dz[j-1]*T(x,j+1) - (m_dz[j-1] + m_dz[j])*T(x,j) + m_dz[j]*T(x,j-1);
+        ret /= m_dz[j-1]*m_dz[j]*(0.5*(m_dz[j-1] + m_dz[j]));
+        return ret;
+    }
     //! @}
 
     doublereal shear(const doublereal* x, size_t j) const {
@@ -461,6 +473,9 @@ protected:
 
     // Domain length
     doublereal m_L; 
+
+    // rhoD is fixed
+    doublereal m_rhoD = 2e-5;
 
 private:
     vector_fp m_ybar;

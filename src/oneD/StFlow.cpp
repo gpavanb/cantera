@@ -392,8 +392,9 @@ void StFlow::eval(size_t jg, doublereal* xg,
             getWdot(x,j);
             for (size_t k = 0; k < m_nsp; k++) {
                 double convec = rho_uf(x,j)*dYdz(x,k,j);
-                double diffus = 2.0*(m_flux(k,j) - m_flux(k,j-1))
-                                / (z(j+1) - z(j-1));
+                //double diffus = 2.0*(m_flux(k,j) - m_flux(k,j-1))
+                //                / (z(j+1) - z(j-1));
+                double diffus = - m_rhoD*d2Ydz2(x,k,j);
                 double wdot_;
                 wdot_ = this->wdot(k,j);
                 
@@ -430,7 +431,8 @@ void StFlow::eval(size_t jg, doublereal* xg,
                 sum2 *= GasConstant * dtdzj;
 
                 rsd[index(c_offset_T, j)] = - m_cp[j]*rho_uf(x,j)*dtdzj
-                                            - divHeatFlux(x,j) - sum - sum2;
+                                            - sum + m_cp[j]*m_rhoD*d2Tdz2(x,j);
+                                            //- divHeatFlux(x,j) - sum - sum2;
                 rsd[index(c_offset_T, j)] /= (m_rho[j]*m_cp[j]);
                 rsd[index(c_offset_T, j)] -= rdt*(T(x,j) - T_prev(j));
                 rsd[index(c_offset_T, j)] -= (m_qdotRadiation[j] / (m_rho[j] * m_cp[j]));
