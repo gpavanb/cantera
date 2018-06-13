@@ -715,6 +715,10 @@ protected:
         return x[index(c_offset_ml,j)];
     }
 
+    doublereal ml_act_prev(size_t j) const {
+        return m_ml0*prevSoln(c_offset_ml, j);
+    }
+
     doublereal ml_prev(size_t j) const {
         return prevSoln(c_offset_ml, j);
     }
