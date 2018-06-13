@@ -400,7 +400,7 @@ void StFlow::eval(size_t jg, doublereal* xg,
                 
                 rsd[index(c_offset_Y + k, j)]
                 = (m_wt[k]*(wdot_)
-                   - convec - diffus)/m_rho[j]
+                   - convec - diffus)/rho(j)
                   - rdt*(Y(x,k,j) - Y_prev(k,j));
                 diag[index(c_offset_Y + k, j)] = 1;
             }
@@ -433,7 +433,7 @@ void StFlow::eval(size_t jg, doublereal* xg,
                 rsd[index(c_offset_T, j)] = - m_cp[j]*rho_uf(x,j)*dtdzj
                                             - sum + m_cp[j]*m_rhoD*d2Tdz2(x,j);
                                             //- divHeatFlux(x,j) - sum - sum2;
-                rsd[index(c_offset_T, j)] /= (m_rho[j]*m_cp[j]);
+                rsd[index(c_offset_T, j)] /= (rho(j)*m_cp[j]);
                 rsd[index(c_offset_T, j)] -= rdt*(T(x,j) - T_prev(j));
                 rsd[index(c_offset_T, j)] -= (m_qdotRadiation[j] / (m_rho[j] * m_cp[j]));
                 diag[index(c_offset_T, j)] = 1;
@@ -1144,6 +1144,8 @@ void SprayLiquid::evalNumberDensity(size_t j, doublereal* x, doublereal* rsd,
      //
      //    d(n_l v_l)/dz + 2n_l U_l = 0
      //------------------------------------------------
+     //rsd[index(c_offset_nl,j)] = -vl(x,j)*dnldz(x,j) - (1.0 + nl(x,j))*m_nl0*yl(x,j)*mdot(x,j)/m_gas->m_rho[j];
+     
      rsd[index(c_offset_nl,j)] = -vl(x,j) * dnldz(x,j) -
          nl(x,j) * (vl(x,j) - vl(x,j-1))/m_dz[j-1] -
          2.0 * nl_Ul(x,j) - rdt * (nl(x,j) - nl_prev(j)) + av_nl(x,j);
@@ -1362,7 +1364,7 @@ void SprayGas::eval(size_t jg, doublereal* xg,
                 }
             if (m_liq->ml_act_prev(j)>cutoff) {
                 rsd[index(c_offset_Y + k, j)] += 
-                    m_liq->m_nl0*(delta_kf - Y(x,k,j)) * m_liq->nl_prev(j) * m_liq->mdot(j) / m_rho[j];
+                    m_liq->m_nl0*(delta_kf - Y(x,k,j)) * m_liq->yl_prev(j) * m_liq->mdot(j) / rho(j);
             }
             } 
             //-----------------------------------------------
@@ -1376,8 +1378,8 @@ void SprayGas::eval(size_t jg, doublereal* xg,
             //-----------------------------------------------
             if (m_liq->ml_act_prev(j)>cutoff) {
             rsd[index(c_offset_T, j)] += m_liq->m_nl0*( 
-                (m_liq->nl_prev(j) * m_liq->mdot(j) * m_cp[j] * (m_liq->Tl_prev(j) - T(x,j)) - 
-                 m_liq->nl_prev(j) * m_liq->mdot(j) * m_liq->q(j))) / (m_rho[j]*m_cp[j]);
+                (m_liq->yl_prev(j) * m_liq->mdot(j) * m_cp[j] * (m_liq->Tl_prev(j) - T(x,j)) - 
+                 m_liq->yl_prev(j) * m_liq->mdot(j) * m_liq->q(j))) / (rho(j)*m_cp[j]);
             }
         }
     }

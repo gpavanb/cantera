@@ -34,7 +34,7 @@ const size_t c_offset_ml = 1; // droplet mass
 const size_t c_offset_nl = 2; // number density
 const doublereal mmHg2Pa = 133.322365;
 const doublereal bar2Pa  = 1.0e+05;
-const doublereal cutoff = 1.0e-16;
+const doublereal cutoff = 1.0e-14;
 
 class Transport;
 
@@ -288,6 +288,10 @@ protected:
 
     doublereal T_prev(size_t j) const {
         return prevSoln(c_offset_T, j);
+    }
+
+    doublereal rho(size_t j) const {
+        return m_rho[j];
     }
 
     doublereal rho_u(const doublereal* x, size_t j) const {
@@ -728,6 +732,13 @@ protected:
         // return 0.0;
     }
 
+    doublereal yl(const doublereal* x, size_t j) const {
+        if (ml_act(x,j)< cutoff) {
+            return 0.0;
+        }
+        return (1.0/(m_nl0*m_ml0))*m_gas->m_rho[j]*nl(x,j)/ml(x,j); 
+    }
+
     doublereal& nl(doublereal* x, size_t j) const {
         return x[index(c_offset_nl,j)];
         // return 0.0;
@@ -735,6 +746,10 @@ protected:
 
     doublereal nl_prev(size_t j) const {
         return prevSoln(c_offset_nl, j);
+    }
+
+    doublereal yl_prev(size_t j) const {
+        return yl(prevSolnPtr(), j);
     }
 
     doublereal rhol(const doublereal* x, size_t j) const {
