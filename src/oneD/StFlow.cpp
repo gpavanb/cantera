@@ -1144,12 +1144,12 @@ void SprayLiquid::evalNumberDensity(size_t j, doublereal* x, doublereal* rsd,
      //
      //    d(n_l v_l)/dz + 2n_l U_l = 0
      //------------------------------------------------
-     //rsd[index(c_offset_nl,j)] = -vl(x,j)*dnldz(x,j) - (1.0 + nl(x,j))*m_nl0*yl(x,j)*mdot(x,j)/m_gas->rho(j)
-     //                            - rdt * (nl(x,j) - nl_prev(j)) + av_nl(x,j);     
+     rsd[index(c_offset_nl,j)] = -vl(x,j)*dnldz(x,j) - (1.0 + nl(x,j))*m_nl0*yl(x,j)*mdot(x,j)/m_gas->rho(j)
+                                 - rdt * (nl(x,j) - nl_prev(j)) + av_nl(x,j);     
      
-     rsd[index(c_offset_nl,j)] = -vl(x,j) * dnldz(x,j) -
-         nl(x,j) * (vl(x,j) - vl(x,j-1))/m_dz[j-1] -
-         2.0 * nl_Ul(x,j) - rdt * (nl(x,j) - nl_prev(j)) + av_nl(x,j);
+     //rsd[index(c_offset_nl,j)] = -vl(x,j) * dnldz(x,j) -
+     //    nl(x,j) * (vl(x,j) - vl(x,j-1))/m_dz[j-1] -
+     //    2.0 * nl_Ul(x,j) - rdt * (nl(x,j) - nl_prev(j)) + av_nl(x,j);
      // rsd[index(c_offset_Y+m_nsp+c_offset_nl,j)] =
      //     -(nl_vl(x,j) - nl_vl(x,j-1))/m_dz[j-1]
      //     -(nl_Ul(x,j) + nl_Ul(x,j-1))
