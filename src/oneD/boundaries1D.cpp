@@ -828,7 +828,7 @@ void SprayInlet1D::eval(size_t jg, doublereal* xg, doublereal* rg,
     // the inlet, since this is set within the flow domain from the
     // continuity equation.
     // Rescaled nl equation
-    rb[c_offset_nl] -= 1.0;
+    rb[c_offset_nl] -= 0.19947;
 
     // The third flow residual is for T, where it is set to T(0).  Subtract
     // the local temperature to hold the flow T to the inlet T.
