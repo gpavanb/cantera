@@ -303,7 +303,7 @@ protected:
     }
 
     doublereal cpgf(size_t j) {
-        return m_cp[j];
+        return 1300;
     }
 
     doublereal u(const doublereal* x, size_t j) const {
