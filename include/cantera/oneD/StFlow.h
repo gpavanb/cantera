@@ -302,6 +302,10 @@ protected:
         return m_rho[j]*uf(j);
     }
 
+    doublereal cpgf(size_t j) {
+        return m_cp[j];
+    }
+
     doublereal u(const doublereal* x, size_t j) const {
         return x[index(c_offset_U, j)];
     }
@@ -360,12 +364,12 @@ protected:
     }
 
     doublereal dYdz(const doublereal* x, size_t k, size_t j) const {
-        size_t jloc = (u(x,j) > 0.0 ? j : j + 1);
+        size_t jloc = (uf(j) > 0.0 ? j : j + 1);
         return (Y(x,k,jloc) - Y(x,k,jloc-1))/m_dz[jloc-1];
     }
 
     doublereal dTdz(const doublereal* x, size_t j) const {
-        size_t jloc = (u(x,j) > 0.0 ? j : j + 1);
+        size_t jloc = (uf(j) > 0.0 ? j : j + 1);
         return (T(x,jloc) - T(x,jloc-1))/m_dz[jloc-1];
     }
 
@@ -506,6 +510,7 @@ public:
     virtual std::string flowType() {
         return "Axisymmetric Stagnation";
     }
+
 };
 
 /**
@@ -576,8 +581,6 @@ protected:
     doublereal fz(const doublereal* x, size_t j);
 
     doublereal Dgf(size_t j);
-
-    doublereal cpgf(size_t j); 
 
     size_t c_offset_fuel;
 

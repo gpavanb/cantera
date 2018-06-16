@@ -430,10 +430,10 @@ void StFlow::eval(size_t jg, doublereal* xg,
                 double dtdzj = dTdz(x,j);
                 sum2 *= GasConstant * dtdzj;
 
-                rsd[index(c_offset_T, j)] = - m_cp[j]*rho_uf(x,j)*dtdzj
-                                            - sum + m_cp[j]*m_rhoD*d2Tdz2(x,j);
+                rsd[index(c_offset_T, j)] = - cpgf(j)*rho_uf(x,j)*dtdzj
+                                            - sum + cpgf(j)*m_rhoD*d2Tdz2(x,j);
                                             //- divHeatFlux(x,j) - sum - sum2;
-                rsd[index(c_offset_T, j)] /= (rho(j)*m_cp[j]);
+                rsd[index(c_offset_T, j)] /= (rho(j)*cpgf(j));
                 rsd[index(c_offset_T, j)] -= rdt*(T(x,j) - T_prev(j));
                 rsd[index(c_offset_T, j)] -= (m_qdotRadiation[j] / (m_rho[j] * m_cp[j]));
                 diag[index(c_offset_T, j)] = 1;
@@ -1144,7 +1144,8 @@ void SprayLiquid::evalNumberDensity(size_t j, doublereal* x, doublereal* rsd,
      //
      //    d(n_l v_l)/dz + 2n_l U_l = 0
      //------------------------------------------------
-     //rsd[index(c_offset_nl,j)] = -vl(x,j)*dnldz(x,j) - (1.0 + nl(x,j))*m_nl0*yl(x,j)*mdot(x,j)/m_gas->m_rho[j];
+     //rsd[index(c_offset_nl,j)] = -vl(x,j)*dnldz(x,j) - (1.0 + nl(x,j))*m_nl0*yl(x,j)*mdot(x,j)/m_gas->rho(j)
+     //                            - rdt * (nl(x,j) - nl_prev(j)) + av_nl(x,j);     
      
      rsd[index(c_offset_nl,j)] = -vl(x,j) * dnldz(x,j) -
          nl(x,j) * (vl(x,j) - vl(x,j-1))/m_dz[j-1] -
@@ -1279,11 +1280,6 @@ doublereal SprayGas::Dgf(size_t j) {
     return m_diff[c_offset_fuel+j*m_nsp];
 }
 
-doublereal SprayGas::cpgf(size_t j) {
-    return 1300;
-    //return m_cp[j];
-}
-
 void SprayGas::updateFuelSpecies(const std::string fuel_name) {
     c_offset_fuel = componentIndex(fuel_name)-c_offset_Y;
 }
@@ -1378,9 +1374,11 @@ void SprayGas::eval(size_t jg, doublereal* xg,
             //-----------------------------------------------
             if (m_liq->ml_act_prev(j)>cutoff) {
             rsd[index(c_offset_T, j)] += m_liq->m_nl0*( 
-                (m_liq->yl_prev(j) * m_liq->mdot(j) * m_cp[j] * (m_liq->Tl_prev(j) - T(x,j)) - 
-                 m_liq->yl_prev(j) * m_liq->mdot(j) * m_liq->q(j))) / (rho(j)*m_cp[j]);
+                (m_liq->yl_prev(j) * m_liq->mdot(j) * cpgf(j) * (m_liq->Tl_prev(j) - T(x,j)) - 
+                 m_liq->yl_prev(j) * m_liq->mdot(j) * m_liq->q(j))) / (rho(j)*cpgf(j));
             }
+            //std::cout << j << " " << m_liq->yl_prev(j) << " " << "Term 4: " << m_liq->m_nl0*(
+            //    (m_liq->yl_prev(j) * m_liq->mdot(j) * (m_liq->Tl_prev(j) - T(x,j) - m_liq->q(j)/m_cp[j]))) << std::endl;
         }
     }
 }
