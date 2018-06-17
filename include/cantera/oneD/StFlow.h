@@ -484,6 +484,9 @@ protected:
 
     // rhoD is fixed
     doublereal m_rhoD = 2e-5;
+ 
+    // Boililng clipping
+    doublereal Tb = 2000;
 
 private:
     vector_fp m_ybar;
@@ -842,8 +845,8 @@ protected:
     //}
 
     doublereal mdot(const doublereal* x, size_t j) {
-        doublereal Bm = std::max((m_gas->cpgf(j)/Lv())*(m_gas->T_prev(j)-Tl(x,j)),0.0);
-        doublereal mdot_ = 2.0*Pi*dl(x,j)*m_gas->m_rho[j]*m_gas->Dgf(j)*std::log(1.0+Bm);
+        doublereal Bm = std::max((m_gas->cpgf(j)/Lv())*(std::min(m_gas->T_prev(j),m_gas->Tb)-Tl(x,j)),0.0);
+        doublereal mdot_ = 2.0*Pi*dl(x,j)*m_gas->m_rhoD*std::log(1.0+Bm);
         return mdot_;
     }
 
