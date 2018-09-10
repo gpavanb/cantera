@@ -829,7 +829,7 @@ protected:
     //}
 
     doublereal Yrs(const doublereal* x, size_t j) {
-        doublereal Xrs = prs(x,j)/m_gas->m_press;
+        doublereal Xrs = std::min(prs(x,j)/m_gas->m_press,1.0);
         doublereal Yrs = m_gas->m_wt[m_gas->c_offset_fuel]*Xrs / 
                         (m_gas->m_wt[m_gas->c_offset_fuel]*Xrs + 
                          (1.0 - Xrs)*m_gas->m_wtm[j]);
