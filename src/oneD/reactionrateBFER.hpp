@@ -116,18 +116,18 @@ std::vector<double> reactionrateBFER(double rho, double YF, double YO2,
   double Keq = DeltaSr/rgas - DeltaHr/(rgas*T);
   Keq = std::exp( Keq );
   kr2 = kf2 / (Keq * pow(P0/(rgas*T), -0.5));
-  std::cout << Keq << std::endl;
 
-  double rrate1 = kf1 * pow(C_F, 0.55) * pow(C_O2, 0.9);
-  double rrate2 = kf2 * pow(C_O2, 0.5) * C_CO;
+  double rrate1 = kf1 * pow(std::max(C_F,0.0), 0.55) * pow(std::max(C_O2,0.0), 0.9);
+  double rrate2 = kf2 * pow(std::max(C_O2,0.0), 0.5) * C_CO;
   double rrate2_r = kr2 * C_CO2;
 
   // Load the vector
   std::vector<double> rates(6);
+  // Species order is O2, F, CO, CO2, H2O, and T
   // Fuel
-  rates[0] = -1.0*WF*rrate1;
+  rates[1] = -1.0*WF*rrate1;
   // Oxygen
-  rates[1] = -10 * 0.032 * rrate1 - 0.5 * 0.032 * (rrate2 - rrate2_r);
+  rates[0] = -10 * 0.032 * rrate1 - 0.5 * 0.032 * (rrate2 - rrate2_r);
   // CO
   rates[2] = 10 * 0.028 * rrate1 - 1.0 * 0.028 * (rrate2 - rrate2_r);
   // CO2
@@ -135,7 +135,7 @@ std::vector<double> reactionrateBFER(double rho, double YF, double YO2,
   // H2O
   rates[4] = 10 * 0.018 * rrate1;
   // T
-  rates[5] = -(hk_F+hform_F)/WF*rates[0]-(hk_O2+hform_O2)/0.032*rates[1]-(hk_CO+hform_CO)/0.028*rates[2]
+  rates[5] = -(hk_F+hform_F)/WF*rates[1]-(hk_O2+hform_O2)/0.032*rates[0]-(hk_CO+hform_CO)/0.028*rates[2]
              -(hk_CO2+hform_CO2)/0.044*rates[3]-(hk_H2O+hform_H2O)/0.018*rates[4];
 
   rates[5] /= 1300;
