@@ -311,7 +311,9 @@ protected:
     }
 
     doublereal uf(size_t j) const {
-        return m_a*(m_L/2.0 - z(j));
+        // Grid is from -lz/2 to lz/2
+        // Rightwards is positive
+        return -m_a*z(j);
     }
 
     doublereal u_prev(size_t j) const {
@@ -483,7 +485,7 @@ protected:
     doublereal m_L; 
 
     // rhoD is fixed
-    doublereal m_rhoD = 2e-5;
+    doublereal m_rhoD = 2.0e-5;
  
     // Boililng clipping
     doublereal Tb = 2000;
@@ -718,7 +720,7 @@ protected:
     }
 
     doublereal ml_act(const doublereal* x, size_t j) const {
-        return m_ml0*x[index(c_offset_ml,j)];
+        return x[index(c_offset_ml,j)];
     }
 
     doublereal& ml(doublereal* x, size_t j) const {
@@ -726,7 +728,7 @@ protected:
     }
 
     doublereal ml_act_prev(size_t j) const {
-        return m_ml0*prevSoln(c_offset_ml, j);
+        return prevSoln(c_offset_ml, j);
     }
 
     doublereal ml_prev(size_t j) const {
@@ -738,11 +740,12 @@ protected:
         // return 0.0;
     }
 
+    // Number density compared to initial
     doublereal yl(const doublereal* x, size_t j) const {
         if (ml_act(x,j)< cutoff) {
             return 0.0;
         }
-        return (1.0/(m_nl0*m_ml0))*m_gas->m_rho[j]*nl(x,j)/ml(x,j); 
+        return m_gas->m_rho[j]*nl(x,j)/ml(x,j); 
     }
 
     doublereal& nl(doublereal* x, size_t j) const {
@@ -760,13 +763,15 @@ protected:
 
     doublereal rhol(const doublereal* x, size_t j) const {
         // DIPPR 105
-        if (std::abs(m_rhol_B-0.0)<std::sqrt(std::numeric_limits<double>::min()) && 
-            std::abs(m_rhol_C-0.0)<std::sqrt(std::numeric_limits<double>::min()) &&
-            std::abs(m_rhol_D-0.0)<std::sqrt(std::numeric_limits<double>::min()) ) {
-            return m_rhol_A;
-        } else {
-            return m_rhol_A/(std::pow(m_rhol_B,1.0+std::pow(1.0-Tl(x,j)/m_rhol_C,m_rhol_D)));
-        }
+        //if (std::abs(m_rhol_B-0.0)<std::sqrt(std::numeric_limits<double>::min()) && 
+        //    std::abs(m_rhol_C-0.0)<std::sqrt(std::numeric_limits<double>::min()) &&
+        //    std::abs(m_rhol_D-0.0)<std::sqrt(std::numeric_limits<double>::min()) ) {
+        //    return m_rhol_A;
+        //} else {
+        //    return m_rhol_A/(std::pow(m_rhol_B,1.0+std::pow(1.0-Tl(x,j)/m_rhol_C,m_rhol_D)));
+        //}
+        // Constant wrt temperature
+        return m_rhol_A;
     }
 
     doublereal ml_vl(const doublereal* x, size_t j) const {
@@ -845,8 +850,8 @@ protected:
     //}
 
     doublereal mdot(const doublereal* x, size_t j) {
-        doublereal Bm = std::max((m_gas->cpgf(j)/Lv())*(std::min(m_gas->T_prev(j),m_gas->Tb)-Tl(x,j)),0.0);
-        doublereal mdot_ = 2.0*Pi*dl(x,j)*m_gas->m_rhoD*std::log(1.0+Bm);
+        doublereal coeff = std::log(std::max((m_gas->cpgf(j)/Lv())*(std::min(m_gas->T_prev(j),m_gas->Tb)-Tl(x,j)),0.0) + 1.0);
+        doublereal mdot_ = 2.0*Pi*dl(x,j)*m_gas->m_rhoD*coeff;
         return mdot_;
     }
 
@@ -864,7 +869,7 @@ protected:
     //}
     
     doublereal q(const doublereal* x, size_t j) {
-        return m_Lv;
+        return m_Lv/m_gas->cpgf(j);
     }
 
     doublereal q(size_t j) {

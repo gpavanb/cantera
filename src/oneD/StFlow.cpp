@@ -7,6 +7,7 @@
 #include "cantera/base/ctml.h"
 #include "cantera/transport/TransportBase.h"
 #include "cantera/numerics/funcs.h"
+#include "reactionrateBFER.hpp"
 
 using namespace std;
 
@@ -383,6 +384,15 @@ void StFlow::eval(size_t jg, doublereal* xg,
               - rdt*(V(x,j) - V_prev(j));
             diag[index(c_offset_V, j)] = 1;
 
+            // Get source terms from BFER
+            double YF = Y(x,1,j);
+            double YO2 = Y(x,0,j);
+            double YN2 = Y(x,5,j);
+            double YH2O = Y(x,4,j);
+            double YCO = Y(x,2,j);
+            double YCO2 = Y(x,3,j);
+            vector_fp rates = reactionrateBFER(rho(j),YF,YO2,YN2,YH2O,YCO,YCO2,T(x,j));
+
             //-------------------------------------------------
             //    Species equations
             //
@@ -394,13 +404,16 @@ void StFlow::eval(size_t jg, doublereal* xg,
                 double convec = rho_uf(x,j)*dYdz(x,k,j);
                 //double diffus = 2.0*(m_flux(k,j) - m_flux(k,j-1))
                 //                / (z(j+1) - z(j-1));
-                double diffus = - m_rhoD*d2Ydz2(x,k,j);
+                double diffus = m_rhoD*d2Ydz2(x,k,j);
                 double wdot_;
-                wdot_ = this->wdot(k,j);
+                wdot_ = rates[k];
+                // N2 production rate is zero
+                if (k == 5)
+                  wdot_ = 0.0;
                 
                 rsd[index(c_offset_Y + k, j)]
-                = (m_wt[k]*(wdot_)
-                   - convec - diffus)/rho(j)
+                = (wdot_
+                  - convec + diffus)/rho(j)
                   - rdt*(Y(x,k,j) - Y_prev(k,j));
                 diag[index(c_offset_Y + k, j)] = 1;
             }
@@ -430,12 +443,12 @@ void StFlow::eval(size_t jg, doublereal* xg,
                 double dtdzj = dTdz(x,j);
                 sum2 *= GasConstant * dtdzj;
 
-                rsd[index(c_offset_T, j)] = - cpgf(j)*rho_uf(x,j)*dtdzj
-                                            - sum + cpgf(j)*m_rhoD*d2Tdz2(x,j);
+                rsd[index(c_offset_T, j)] = rho_uf(x,j)*dtdzj
+                                            + rates[5] + m_rhoD*d2Tdz2(x,j);
                                             //- divHeatFlux(x,j) - sum - sum2;
-                rsd[index(c_offset_T, j)] /= (rho(j)*cpgf(j));
+                rsd[index(c_offset_T, j)] /= rho(j);
                 rsd[index(c_offset_T, j)] -= rdt*(T(x,j) - T_prev(j));
-                rsd[index(c_offset_T, j)] -= (m_qdotRadiation[j] / (m_rho[j] * m_cp[j]));
+                //rsd[index(c_offset_T, j)] -= (m_qdotRadiation[j] / (m_rho[j] * m_cp[j]));
                 diag[index(c_offset_T, j)] = 1;
             } else {
                 // residual equations if the energy equation is disabled
@@ -1113,7 +1126,7 @@ void SprayLiquid::eval(size_t jg, doublereal* xg,
             //    dm_l/dt + v_l dm_l/dz = -mdot
             //-------------------------------------------------
             rsd[index(c_offset_ml,j)] = -vl(x,j) * dmldz(x,j) - 
-                rdt * (ml(x,j) - ml_prev(j)) - mdot(x,j)/m_ml0 + av_ml(x,j);
+                rdt * (ml(x,j) - ml_prev(j)) - mdot(x,j) + av_ml(x,j);
             diag[index(c_offset_ml, j)] = 1;
 
             //-----------------------------------------------
@@ -1144,7 +1157,7 @@ void SprayLiquid::evalNumberDensity(size_t j, doublereal* x, doublereal* rsd,
      //
      //    d(n_l v_l)/dz + 2n_l U_l = 0
      //------------------------------------------------
-     rsd[index(c_offset_nl,j)] = -vl(x,j)*dnldz(x,j) - (1.0 + nl(x,j))*m_nl0*yl(x,j)*mdot(x,j)/m_gas->rho(j)
+     rsd[index(c_offset_nl,j)] = -vl(x,j)*dnldz(x,j) - (1.0 + nl(x,j))*yl(x,j)*mdot(x,j)/m_gas->rho(j)
                                  - rdt * (nl(x,j) - nl_prev(j)) + av_nl(x,j);     
      
      //rsd[index(c_offset_nl,j)] = -vl(x,j) * dnldz(x,j) -
@@ -1360,7 +1373,7 @@ void SprayGas::eval(size_t jg, doublereal* xg,
                 }
             if (m_liq->ml_act_prev(j)>cutoff) {
                 rsd[index(c_offset_Y + k, j)] += 
-                    m_liq->m_nl0*(delta_kf - Y(x,k,j)) * m_liq->yl_prev(j) * m_liq->mdot(j) / rho(j);
+                    (delta_kf - Y(x,k,j)) * m_liq->yl_prev(j) * m_liq->mdot(j) / rho(j);
             }
             } 
             //-----------------------------------------------
@@ -1373,9 +1386,8 @@ void SprayGas::eval(size_t jg, doublereal* xg,
             //      + nl mdot cp (Tl - Tg) - nl mdot q
             //-----------------------------------------------
             if (m_liq->ml_act_prev(j)>cutoff) {
-            rsd[index(c_offset_T, j)] += m_liq->m_nl0*( 
-                (m_liq->yl_prev(j) * m_liq->mdot(j) * cpgf(j) * (m_liq->Tl_prev(j) - T(x,j)) - 
-                 m_liq->yl_prev(j) * m_liq->mdot(j) * m_liq->q(j))) / (rho(j)*cpgf(j));
+            rsd[index(c_offset_T, j)] +=  
+                m_liq->yl_prev(j) * m_liq->mdot(j) * (m_liq->Tl_prev(j) - T(x,j) - m_liq->q(j)) / rho(j);
             }
             //std::cout << j << " " << m_liq->yl_prev(j) << " " << "Term 4: " << m_liq->m_nl0*(
             //    (m_liq->yl_prev(j) * m_liq->mdot(j) * (m_liq->Tl_prev(j) - T(x,j) - m_liq->q(j)/m_cp[j]))) << std::endl;
