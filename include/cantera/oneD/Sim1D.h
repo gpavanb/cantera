@@ -184,6 +184,8 @@ public:
 
     doublereal diff_norm();
 
+    void init_last_soln();
+
     doublereal take_step(int loglevel, int nsteps, doublereal dt);
 
     void setSolution(const doublereal* soln) {

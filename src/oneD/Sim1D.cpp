@@ -233,6 +233,10 @@ doublereal Sim1D::take_step(int loglevel, int nsteps, doublereal dt)
   return dt_new;
 }
 
+void Sim1D::init_last_soln() {
+  initTimeInteg(0.0,m_x.data()); 
+}
+
 doublereal Sim1D::diff_norm()
 {
   return m_change;
