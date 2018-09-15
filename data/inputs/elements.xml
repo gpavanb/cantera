@@ -1,6 +1,6 @@
 <ctml>
   <elementData caseSensitive="no">
-	<element name="H" atomicWt = "1.00794" atomicNumber = "1"> 
+	<element name="H" atomicWt = "1.0" atomicNumber = "1"> 
            <entropy298 value = "65.340E3">
              <source>
 		    The standard entropy (1/2 H2gas) was taken from the NIST-JANAF 
@@ -62,7 +62,7 @@
              </source>
            </entropy298>
         </element>
-	<element name="C" atomicWt = "12.011" atomicNumber = "6">
+	<element name="C" atomicWt = "12.0" atomicNumber = "6">
            <entropy298 value = "5.740E3">
              <source>
                     The standard entropy was taken from the NIST-JANAF
@@ -71,7 +71,7 @@
              </source>
            </entropy298>
         </element>
-	<element name="N" atomicWt = "14.00674" atomicNumber = "7" >
+	<element name="N" atomicWt = "14.0" atomicNumber = "7" >
            <entropy298 value = "95.8045E3">
              <source>
 		    The standard entropy (1/2 N2 gas) was taken from the NIST-JANAF 
@@ -80,7 +80,7 @@
              </source>
            </entropy298>
         </element>
-	<element name="O" atomicWt = "15.9994" atomicNumber = "8" >
+	<element name="O" atomicWt = "16.0" atomicNumber = "8" >
            <entropy298 value = "102.5735E3">
              <source>
 		    The standard entropy (1/2 O2 gas) was taken from the NIST-JANAF 

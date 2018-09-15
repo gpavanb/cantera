@@ -51,15 +51,16 @@ struct isotopeWeightData {
  *
  * The size of the table is given by the initial instantiation.
  */
+// Modifying to get exact match with Benedetta code
 static struct atomicWeightData atomicWeightTable[] = {
-    {"H",  "hydrogen",       1.00794},
+    {"H",  "hydrogen",       1.0},
     {"He", "helium",         4.002602},
     {"Li", "lithium",        6.941  },
     {"Be", "beryllium",      9.012182},
     {"B",  "boron",         10.811  },
-    {"C",  "carbon",        12.011  },
-    {"N",  "nitrogen",      14.00674},
-    {"O",  "oxygen",        15.9994 },
+    {"C",  "carbon",        12.0  },
+    {"N",  "nitrogen",      14.0},
+    {"O",  "oxygen",        16.0 },
     {"F",  "fluorine",      18.9984032},
     {"Ne", "neon",          20.1797 },
     {"Na", "sodium",        22.98977},
